@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>MIDNIGHT LIMO — 3D Drift</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🚘</text></svg>">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<!-- ------------------------------------------------------------------ HUD -->
+<div id="hud" class="hidden">
+
+  <div class="hud-corner hud-tl">
+    <div class="fare-card" id="fare-card">
+      <div class="fare-label" id="fare-label">CRUISING</div>
+      <div class="fare-name" id="fare-name">Find a fare</div>
+      <div class="fare-meter"><div class="fare-meter-fill" id="fare-timer-fill"></div></div>
+      <div class="fare-dist"><span id="fare-dist">—</span></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><span class="stat-k">CASH</span><span class="stat-v" id="stat-cash">$0</span></div>
+      <div class="stat"><span class="stat-k">FARES</span><span class="stat-v" id="stat-fares">0</span></div>
+      <div class="stat"><span class="stat-k">BEST DRIFT</span><span class="stat-v" id="stat-best">0</span></div>
+    </div>
+  </div>
+
+  <div class="hud-corner hud-tr">
+    <canvas id="minimap" width="220" height="220"></canvas>
+  </div>
+
+  <div class="drift-banner hidden" id="drift-banner">
+    <div class="drift-score" id="drift-score">0</div>
+    <div class="drift-mult" id="drift-mult">x1.0</div>
+    <div class="drift-word" id="drift-word">DRIFT</div>
+  </div>
+
+  <div class="hud-corner hud-br">
+    <canvas id="dial" width="320" height="320"></canvas>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- --------------------------------------------------------------- Overlay -->
+<div id="overlay">
+  <div class="panel" id="panel-loading">
+    <div class="logo">MIDNIGHT<span>LIMO</span></div>
+    <div class="loadbar"><div class="loadbar-fill" id="loadbar-fill"></div></div>
+    <div class="loadtext" id="loadtext">building the city…</div>
+  </div>
+
+  <div class="panel hidden" id="panel-start">
+    <div class="logo">MIDNIGHT<span>LIMO</span></div>
+    <p class="tag">Stretch eight metres of chrome through a neon city.<br>Pick up fares. Drift the corners. Don't spill the champagne.</p>
+    <div class="keys">
+      <div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>drive</span></div>
+      <div class="key-group"><kbd>Space</kbd><span>handbrake / drift</span></div>
+      <div class="key-group"><kbd>Shift</kbd><span>boost</span></div>
+      <div class="key-group"><kbd>C</kbd><span>camera</span></div>
+      <div class="key-group"><kbd>R</kbd><span>recover</span></div>
+    </div>
+    <button class="btn" id="btn-start">START ENGINE</button>
+    <div class="quality">
+      <span>quality</span>
+      <button class="qbtn" data-q="low">low</button>
+      <button class="qbtn is-on" data-q="high">high</button>
+      <button class="qbtn" data-q="ultra">ultra</button>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="panel-pause">
+    <div class="logo small">PAUSED</div>
+    <button class="btn" id="btn-resume">RESUME</button>
+    <div class="hint">press <kbd>Esc</kbd> to resume</div>
+  </div>
+</div>
+
+<div id="nowebgl" class="hidden">
+  <div class="panel">
+    <div class="logo small">NO WEBGL</div>
+    <p class="tag">This browser can't create a WebGL2 context, so the city can't be rendered.<br>Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration on.</p>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

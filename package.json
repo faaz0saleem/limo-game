@@ -1,0 +1,13 @@
+{
+  "name": "midnight-limo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 3D night-city limousine drift game. No build step, no external assets.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server . -p 8080 -c-1 -o",
+    "serve": "npx --yes http-server . -p 8080 -c-1"
+  },
+  "keywords": ["three.js", "webgl", "game", "drift", "3d"],
+  "license": "MIT"
+}

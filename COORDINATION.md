@@ -1,0 +1,79 @@
+# Working on this repo alongside another agent
+
+Two Claude sessions were pointed at this repository at the same time:
+
+| Session | Branch | Scope |
+| --- | --- | --- |
+| "3D game with graphics" | `claude/3d-game-graphics-txupag` | this branch — the 3D game |
+| "Limo Drift game concept" | `claude/limo-drift-game-dx164q` | concept / design work |
+
+Direct session-to-session messaging isn't available in these environments
+(`ListAgents` reports no reachable peers), so coordination happens here and in
+[issue #1](https://github.com/faaz0saleem/limo-game/issues/1).
+
+The repo contained only a placeholder `hi` file when this branch started, so
+there was nothing to merge from and the whole game was written from scratch
+here.
+
+## If you're the other agent
+
+Please build on top of this rather than in parallel — the rendering, physics,
+city and camera are done and tested. The seams designed for extension:
+
+**Gameplay events.** `Gameplay` takes an `onEvent(type, payload)` callback and
+emits `picked-up`, `fare-paid`, `fare-lost`, `drift-banked`. Hook new rules
+there instead of editing the fare loop.
+
+```js
+new Gameplay(scene, city, hud, { onEvent: (type, data) => { /* … */ } });
+```
+
+**Vehicle telemetry.** `Vehicle` exposes `position`, `heading`, `velocity`,
+`speed` (signed, m/s), `kmh`, `speed01`, `slipAngle`, `wheelSlip`,
+`isDrifting`, `gear`, `rpm`, `boostCharge`, `impact`. Read these; don't write
+them mid-frame.
+
+**World queries.** `City` exposes `spawnPoints`, `randomSpawn(rand, awayFrom,
+minDist)`, `snapToRoad(v)`, `alignedHeading(v, currentHeading)` and
+`probe(x, z, radius)` for collision. `Traffic` exposes `cars`, `probe()` and
+`shove()`.
+
+**HUD.** `HUD` has `setFare`, `setFareProgress`, `setStats`, `showDrift`,
+`bankDrift`, `toast(text, 'good'|'bad')`. Add panels as new methods rather than
+reaching into the DOM from gameplay code.
+
+**Tuning.** Driving feel lives in one `CFG` object at the top of
+`src/vehicle/physics.js`; graphics presets live in `QUALITY` in
+`src/render/renderer.js`. Both are meant to be edited.
+
+## Things that will bite you
+
+These were all found and fixed the hard way — please don't reintroduce them:
+
+- **Light intensities are physical.** three.js r155+ uses real falloff. A
+  headlight needs intensity in the thousands, not single digits, or the road
+  renders black.
+- **The boundary wall needs a fixed inward normal.** Generic "push out of the
+  nearest face" ejects the *camera* through the outer face of a thin wall and
+  leaves you rendering from behind it. Boundary colliders carry `nx`/`nz`.
+- **The chase camera shortens its boom** rather than sliding along walls, for
+  the same reason. Minimum boom is 6.5m because the car is 8.6m long.
+- **Billboards on the car glare through the bodywork.** Headlight and taillight
+  glows are direction-facing quads, deliberately not sprites.
+- **`ctx.font` can't take CSS custom properties** — `var(--font)` silently
+  fails and the canvas keeps the previous font.
+- Physics must not import `limo.js` (it needs a DOM). Dimensions live in
+  `src/vehicle/spec.js`.
+
+## Testing
+
+There's no test runner wired up, but the physics model is importable in plain
+Node once `node_modules/three` is linked to `vendor/three` (gitignored):
+
+```js
+import { Vehicle } from './src/vehicle/physics.js';
+```
+
+Everything else was verified by driving the real page in headless Chromium via
+Playwright — screenshots plus reading `window.__limo` (the live game object is
+exposed there for exactly this).
