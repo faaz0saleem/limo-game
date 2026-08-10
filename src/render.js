@@ -213,10 +213,12 @@ export class Renderer {
         ctx.beginPath();
         ctx.ellipse(0, 0, z.r, z.r * 0.78, 0.4, 0, TAU);
         ctx.fill();
-        const g = ctx.createRadialGradient(-z.r * 0.2, -z.r * 0.2, 2, 0, 0, z.r);
-        g.addColorStop(0, `hsla(${(time * 40) % 360},80%,60%,0.35)`);
-        g.addColorStop(0.6, `hsla(${(time * 40 + 120) % 360},80%,55%,0.16)`);
-        g.addColorStop(1, 'rgba(0,0,0,0)');
+        // Keep the sheen a thin highlight, not a wash — a broad rainbow over
+        // the whole puddle reads as a shrub rather than a slick.
+        const g = ctx.createRadialGradient(-z.r * 0.3, -z.r * 0.3, 2, 0, 0, z.r);
+        g.addColorStop(0, `hsla(${(time * 40) % 360},90%,65%,0.3)`);
+        g.addColorStop(0.28, `hsla(${(time * 40 + 120) % 360},85%,55%,0.1)`);
+        g.addColorStop(0.6, 'rgba(0,0,0,0)');
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.ellipse(0, 0, z.r, z.r * 0.78, 0.4, 0, TAU);
@@ -264,8 +266,8 @@ export class Renderer {
         }
       } else if (z.type === 'bump') {
         ctx.rotate(z.a);
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = '#454b5c';
+        ctx.globalAlpha = 0.32;
+        ctx.fillStyle = '#4d5468';
         for (let gx = -z.r; gx < z.r; gx += 15) {
           for (let gy = -z.r; gy < z.r; gy += 15) {
             if (gx * gx + gy * gy > z.r * z.r) continue;
@@ -482,18 +484,23 @@ export class Renderer {
         }
       }
 
-      // Body
+      // Body. Deliberately lighter than a real limo would be: against dark
+      // asphalt with cargo covering the roof, a true black car disappears and
+      // the civilian traffic ends up reading louder than the player.
       const bodyGrad = ctx.createLinearGradient(0, -L.segWidth / 2, 0, L.segWidth / 2);
-      bodyGrad.addColorStop(0, '#22252f');
-      bodyGrad.addColorStop(0.35, COLORS.limoBody);
-      bodyGrad.addColorStop(1, '#080a0f');
+      bodyGrad.addColorStop(0, '#464f66');
+      bodyGrad.addColorStop(0.4, COLORS.limoBody);
+      bodyGrad.addColorStop(1, '#0d1016');
       ctx.fillStyle = bodyGrad;
       roundRect(ctx, -L.segLength / 2, -L.segWidth / 2, L.segLength, L.segWidth, seg.isCab ? 10 : 6);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(232,198,106,0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
 
       // Gold trim strip
       ctx.fillStyle = COLORS.limoTrim;
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0.85;
       ctx.fillRect(-L.segLength / 2 + 2, -1.4, L.segLength - 4, 2.8);
       ctx.globalAlpha = 1;
 
@@ -595,6 +602,8 @@ export class Renderer {
       ctx.save();
       ctx.translate(st.x, st.y);
       ctx.rotate(st.angle);
+      // Slightly under-size the load so a rim of limo always shows around it.
+      ctx.scale(0.85, 0.85);
       drawCargoItem(ctx, item.def, {
         time,
         leanX: st.leanX,
@@ -643,7 +652,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(x - mm.w - pad, y + pad);
     ctx.globalAlpha = 0.9;
-    ctx.fillStyle = 'rgba(10,12,18,0.55)';
+    ctx.fillStyle = 'rgba(10,12,18,0.7)';
     roundRect(ctx, -pad, -pad, mm.w + pad * 2, mm.h + pad * 2, 10);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.16)';
@@ -666,6 +675,7 @@ export class Renderer {
     ctx.arc((p.x - mm.minX) * mm.scale, (p.y - mm.minY) * mm.scale, 4.5, 0, TAU);
     ctx.fill();
     ctx.restore();
+    return y + pad + mm.h + pad; // screen Y just below the map panel
   }
 
   drawHud(state) {
@@ -679,7 +689,7 @@ export class Renderer {
     ctx.textAlign = 'left';
 
     // --- Top left: contract -----------------------------------------
-    ctx.fillStyle = 'rgba(10,12,18,0.5)';
+    ctx.fillStyle = 'rgba(10,12,18,0.68)';
     roundRect(ctx, pad, pad, 258, 62, 12);
     ctx.fill();
     ctx.fillStyle = COLORS.limoTrim;
@@ -704,7 +714,7 @@ export class Renderer {
     const barW = Math.min(420, W * 0.42);
     const barX = W / 2 - barW / 2;
     const barY = pad + 54;
-    ctx.fillStyle = 'rgba(10,12,18,0.55)';
+    ctx.fillStyle = 'rgba(10,12,18,0.7)';
     roundRect(ctx, barX, barY, barW, 10, 5);
     ctx.fill();
     ctx.fillStyle = COLORS.limoTrim;
@@ -715,23 +725,23 @@ export class Renderer {
     ctx.arc(barX + barW, barY + 5, 6, 0, TAU);
     ctx.fill();
 
-    // --- Score ------------------------------------------------------
+    // --- Route map, then the score beneath it -----------------------
+    const mapBottom = this.drawMinimap(track, limo, W - pad, pad);
+
     ctx.textAlign = 'right';
-    ctx.font = 'bold 22px "Trebuchet MS", sans-serif';
+    ctx.font = 'bold 24px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(Math.round(score).toLocaleString('en-US'), W - pad - 14, pad + 88);
+    ctx.fillText(Math.round(score).toLocaleString('en-US'), W - pad, mapBottom + 10);
     ctx.font = '11px "Trebuchet MS", sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.fillText('SCORE', W - pad - 14, pad + 112);
-
-    this.drawMinimap(track, limo, W - pad, pad);
+    ctx.fillText('SCORE', W - pad, mapBottom + 36);
 
     // --- Cargo balance meter ----------------------------------------
     const meterW = 240;
     const meterX = pad;
     const meterY = H - pad - 74;
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(10,12,18,0.5)';
+    ctx.fillStyle = 'rgba(10,12,18,0.68)';
     roundRect(ctx, meterX, meterY, meterW, 74, 12);
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
@@ -769,7 +779,7 @@ export class Renderer {
     const bW = 190;
     const bX = W - pad - bW;
     const bY = H - pad - 74;
-    ctx.fillStyle = 'rgba(10,12,18,0.5)';
+    ctx.fillStyle = 'rgba(10,12,18,0.68)';
     roundRect(ctx, bX, bY, bW, 74, 12);
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.55)';

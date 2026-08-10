@@ -94,6 +94,14 @@ difficulty shifting the weights toward the nastier ones as levels climb. Each
 candidate piece is tested against a spatial hash of everything already placed and
 rejected if the road would run on top of itself, so layouts stay untangled.
 
+Every generated layout is then checked against one hard invariant: **no kerb
+wall may cross the driving line**. A layout that fails is thrown away and
+regenerated on a derived seed, as is one that boxed itself in so early the
+contract would be trivially short. This matters because it is exactly the class
+of bug that makes a level silently unplayable — an early version merged 24 edge
+points into a single straight chord that sliced across a corner, walling the
+road off completely, and several levels became impossible.
+
 From the centerline it derives:
 
 - **kerb walls** — the edge polylines are simplified first, so long straights
@@ -172,8 +180,31 @@ scripts/
   check.mjs         parses every module
   smoke-test.mjs    headless playthrough assertions
   autoplay.mjs      bot plays every level; checks they are completable
+  track-audit.mjs   generator invariants across many seeds
   probe.mjs         physics feel readouts (speed, drift, tilt, jackknife)
 ```
+
+Nothing here is a unit test of a pure function — this is a game, so the checks
+drive the real thing in a real browser and assert on what actually happened.
+`autoplay.mjs` is the important one: a deliberately mediocre bot (no racing
+line, no braking) plays every contract, so a level it can finish is comfortably
+human-completable, and a level it fails is a balance red flag. It caught cargo
+being stripped off the roof in the first second of every run, and it caught the
+walled-off corridors described above.
+
+### Difficulty curve
+
+The city grows with the limo: road width scales with level, because a
+ten-segment limo is over 700 units long and would otherwise spend the whole
+contract scraping a kerb. Alleys widen at half that rate so they stay the pinch
+point they are meant to be. Time limits scale with track length *and* corner
+density, and checkpoints bank extra seconds along the route.
+
+There is no reverse gear, so a limo wedged across an alley would be a dead run.
+After a moment at a standstill the game straightens it back out along the road —
+cargo snapped along with it, so the recovery itself never costs an item — and
+each repeat drops it slightly further down the road, guaranteeing an escape
+rather than re-wedging in the same spot.
 
 ## Development
 

@@ -71,9 +71,12 @@ export function getLevel(n) {
   }
 
   const trackLength = CONFIG.track.baseLength + CONFIG.track.lengthPerLevel * (level - 1);
-  // Assume the player averages ~65% of top speed through the city.
+  // Assume the player averages ~65% of top speed through the city. Longer
+  // contracts have proportionally more corners, so the allowance widens with
+  // level on top of the checkpoint bonuses banked along the way.
   const cruise = CONFIG.limo.maxSpeed * 0.65 * 60;
-  const timeLimit = Math.round((trackLength / cruise) * 1.9 + 10);
+  const pace = 1.9 + 0.3 * clamp((level - 1) / 9, 0, 1);
+  const timeLimit = Math.round((trackLength / cruise) * pace + 10);
 
   return {
     level,

@@ -64,7 +64,11 @@ await page.evaluate(() => {
     if (window.__bot && g && g.limo && g.track && g.state === 'playing') {
       const cab = g.limo.cab;
       const speed = g.limo.speed;
-      const ahead = Math.round(3 + speed * 0.9);
+      // Aim further down the road the longer the limo is — otherwise the bot
+      // clips every apex and drags its tail along the inside kerb. Capped,
+      // because past a point the aim point wraps around a bend and the bot
+      // starts steering back the way it came.
+      const ahead = Math.min(13, Math.round(3 + speed * 0.9 + g.limo.segmentCount * 0.7));
       const s = g.track.sample(g.playerIndex + ahead);
       const err = angleDiff(Math.atan2(s.y - cab.position.y, s.x - cab.position.x), cab.angle);
       g.input.left = err < -0.04;

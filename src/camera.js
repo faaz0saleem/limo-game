@@ -40,10 +40,11 @@ export class Camera {
   fitZoom(worldLength) {
     const minSide = Math.min(this.viewW, this.viewH);
     const maxSide = Math.max(this.viewW, this.viewH);
-    // Needs to fit the limo diagonally-ish plus road width around it.
-    const need = worldLength * 1.15 + 420;
+    // Two constraints: the whole limo has to fit along the long axis, and
+    // enough road has to be visible across the short axis to read a corner.
+    const need = worldLength * 1.15 + 380;
     const byLength = maxSide / need;
-    const byRoad = minSide / (CONFIG.track.roadWidth * 2.1);
+    const byRoad = minSide / (CONFIG.track.roadWidth * 1.5);
     return clamp(Math.min(byLength, byRoad), CONFIG.camera.minZoom, CONFIG.camera.baseZoom);
   }
 

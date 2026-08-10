@@ -131,8 +131,10 @@ const main = async () => {
 
     // Hard cornering should load the cargo up.
     await press('ArrowLeft', 900);
+    // Peak, not instantaneous — the load settles back the moment the wheel is
+    // straightened, so sampling after the release would read almost nothing.
     const cornering = await page.evaluate(() => ({
-      tilt: window.__limo.rig.worstTilt,
+      tilt: Math.max(...window.__limo.rig.items.map((i) => i.peakTilt)),
       drift: window.__limo.limo.maxDriftAngle,
       slip: window.__limo.limo.slip,
     }));
@@ -159,22 +161,10 @@ const main = async () => {
       await page.screenshot({ path: join(root, 'test-artifacts', 'gameplay.png') });
     }
 
-    // Force a cargo drop and make sure the strap really breaks.
-    const dropped = await page.evaluate(() => {
-      const g = window.__limo;
-      const item = g.rig.items[0];
-      item.detach(g._events(), 'test');
-      return { attached: item.attached, constraint: item.constraint, intact: g.rig.intact };
-    });
-    assert(dropped.attached === false && dropped.constraint === null, 'cargo strap breaks cleanly');
-    console.log(`  · cargo after forced drop: ${dropped.intact} intact`);
-
     // Teleport to the finish line to exercise the result flow.
-    await page.evaluate(() => {
-      const g = window.__limo;
-      g.limo.respawnAt(g.track, g.track.finish.index - 3);
-      g.playerIndex = g.track.finish.index - 3;
-    });
+    await page.evaluate(() => window.__limo.placeLimoAt(window.__limo.track.finish.index - 3));
+    const afterTeleport = await page.evaluate(() => window.__limo.rig.intact);
+    assert(afterTeleport === 1, 'repositioning the limo does not tear off its cargo');
     await page.waitForFunction(() => window.__limo.state === 'result', null, { timeout: 12000 });
     const res = await page.evaluate(() => ({
       delivered: window.__limo.result.delivered,
@@ -188,6 +178,34 @@ const main = async () => {
 
     if (wantShots) {
       await page.screenshot({ path: join(root, 'test-artifacts', 'result.png') });
+    }
+
+    // Strap-break behaviour, on a level with enough cargo that losing one item
+    // does not immediately end the run.
+    await page.evaluate(() => window.__limo.startLevel(3));
+    await page.waitForFunction(() => window.__limo.state === 'playing', null, { timeout: 12000 });
+    const dropped = await page.evaluate(() => {
+      const g = window.__limo;
+      const item = g.rig.items[0];
+      const before = g.rig.intact;
+      item.detach(g._events(), 'test');
+      return {
+        attached: item.attached,
+        constraint: item.constraint,
+        before,
+        after: g.rig.intact,
+        collidesNow: item.body.collisionFilter.mask !== 0,
+        stillPlaying: g.state === 'playing',
+      };
+    });
+    assert(dropped.attached === false && dropped.constraint === null, 'cargo strap breaks cleanly');
+    assert(dropped.after === dropped.before - 1, 'losing one item leaves the rest strapped on');
+    assert(dropped.collidesNow, 'dropped cargo starts colliding with the world');
+    assert(dropped.stillPlaying, 'losing one of several items does not end the run');
+
+    if (wantShots) {
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(root, 'test-artifacts', 'cargo-drop.png') });
     }
 
     assert(errors.length === 0, `no console/page errors (saw ${errors.length})`);

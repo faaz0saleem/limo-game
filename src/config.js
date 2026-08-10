@@ -71,15 +71,16 @@ export const CONFIG = {
     // velocity effect and so costs the limo nothing.
     densityScale: 0.16,
     frictionAir: 0.02,
-    inertiaBoost: 5.5, // amplifies apparent load transfer (per-item topHeavy scales this)
+    inertiaBoost: 9.5, // amplifies apparent load transfer (per-item topHeavy scales this)
     // Cargo is meant to be threatened by *cornering*, not by flooring the
     // throttle, so longitudinal load transfer counts for much less.
-    longitudinalWeight: 0.32,
+    longitudinalWeight: 0.15,
     // Smoothing + a ceiling on the acceleration fed into the model. Without
     // these, one-step spikes (the launch, a wall impact) would exceed anything
-    // cornering can produce and instantly strip the roof.
+    // cornering can produce and instantly strip the roof. The ceiling is still
+    // set high enough that a genuine crash throws the load.
     accelSmoothing: 0.35,
-    maxAccelInput: 0.34,
+    maxAccelInput: 0.3,
     breakDistance: 26, // world units of strap stretch before it snaps
     warnRatio: 0.55,
     visualLean: 1.6, // render exaggeration of the physical lean
@@ -98,14 +99,19 @@ export const CONFIG = {
     roadWidth: 400,
     alleyWidth: 240,
     plazaWidth: 620,
+    // The limo gains a segment every level, so the city has to grow with it or
+    // the later contracts turn into one long scrape down the kerb.
+    widthPerLevel: 13,
     wallThickness: 26,
-    checkpointEvery: 26, // samples
-    checkpointBonus: 6.5, // seconds
+    checkpointEvery: 22, // samples
+    // Banked time is how the longest limos stay survivable: they trade far more
+    // paint on the kerbs, and each checkpoint buys back the speed that cost.
+    checkpointBonus: 7, // seconds
   },
 
   camera: {
-    baseZoom: 1.0,
-    minZoom: 0.42,
+    baseZoom: 1.45,
+    minZoom: 0.5,
     lookAhead: 15,
     follow: 0.115,
     zoomLerp: 0.045,

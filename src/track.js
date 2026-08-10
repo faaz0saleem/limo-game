@@ -133,7 +133,7 @@ export class Track {
 /* Centerline construction                                             */
 /* ------------------------------------------------------------------ */
 
-function buildCenterline(rng, targetLength, difficulty) {
+function buildCenterline(rng, targetLength, difficulty, widths) {
   const step = CONFIG.track.step;
   const samples = [];
   const cellSize = 110;
@@ -142,7 +142,7 @@ function buildCenterline(rng, targetLength, difficulty) {
   let x = 0;
   let y = 0;
   let a = 0;
-  let width = CONFIG.track.roadWidth;
+  let width = widths.road;
 
   const key = (cx, cy) => cx + ',' + cy;
 
@@ -205,7 +205,7 @@ function buildCenterline(rng, targetLength, difficulty) {
 
     switch (piece.type) {
       case PIECE.STRAIGHT:
-        advance(0, CONFIG.track.roadWidth, piece.count);
+        advance(0, widths.road, piece.count);
         break;
       case PIECE.SWEEPER:
       case PIECE.CURVE:
@@ -223,13 +223,13 @@ function buildCenterline(rng, targetLength, difficulty) {
         break;
       }
       case PIECE.ALLEY:
-        advance(piece.drift, CONFIG.track.alleyWidth, piece.count);
+        advance(piece.drift, widths.alley, piece.count);
         break;
       case PIECE.PLAZA:
-        advance(0, CONFIG.track.plazaWidth, piece.count);
+        advance(0, widths.plaza, piece.count);
         break;
       default:
-        advance(0, CONFIG.track.roadWidth, 4);
+        advance(0, widths.road, 4);
     }
     return out;
   }
@@ -284,7 +284,7 @@ function buildCenterline(rng, targetLength, difficulty) {
             dir,
             radius: rng.range(430, 780),
             angle: rng.range(0.6, 1.7),
-            width: CONFIG.track.roadWidth,
+            width: widths.road,
           };
           break;
         case PIECE.CURVE:
@@ -293,7 +293,7 @@ function buildCenterline(rng, targetLength, difficulty) {
             dir,
             radius: rng.range(270, 410),
             angle: rng.range(1.0, 1.9),
-            width: CONFIG.track.roadWidth * rng.range(0.88, 1.0),
+            width: widths.road * rng.range(0.88, 1.0),
           };
           break;
         case PIECE.HAIRPIN:
@@ -302,7 +302,7 @@ function buildCenterline(rng, targetLength, difficulty) {
             dir,
             radius: rng.range(225, 275),
             angle: rng.range(2.5, 3.05),
-            width: CONFIG.track.roadWidth * 1.1,
+            width: widths.road * 1.1,
           };
           break;
         case PIECE.CHICANE:
@@ -311,7 +311,7 @@ function buildCenterline(rng, targetLength, difficulty) {
             dir,
             radius: rng.range(290, 400),
             angle: rng.range(0.7, 1.15),
-            width: CONFIG.track.roadWidth * 0.95,
+            width: widths.road * 0.95,
           };
           break;
         case PIECE.ALLEY:
@@ -482,7 +482,7 @@ function buildWalls(track, world, edges) {
       f.x + Math.cos(f.a) * 120,
       f.y + Math.sin(f.a) * 120,
       thickness,
-      CONFIG.track.roadWidth * 1.6,
+      track.sample(track.finish.index).w * 1.6,
       { isStatic: true, angle: f.a, label: 'wall', collisionFilter: { ...filter } }
     )
   );
@@ -568,7 +568,7 @@ function decorate(track, world, rng, difficulty) {
         type: 'bump',
         x: s.x,
         y: s.y,
-        r: Math.max(s.w * 0.55, 90),
+        r: Math.max(s.w * 0.38, 80),
         strength: rng.range(0.5, 1),
         a: s.a,
         index: i,
@@ -653,18 +653,27 @@ function decorate(track, world, rng, difficulty) {
 /* Public entry point                                                  */
 /* ------------------------------------------------------------------ */
 
-export function generateTrack(world, { level = 1, seed = null, attempts = 8 } = {}) {
+export function generateTrack(world, { level = 1, seed = null, attempts = 14 } = {}) {
   const baseSeed = seed == null ? Math.floor(Math.random() * 1e9) : seed;
   const difficulty = clamp((level - 1) / 9, 0, 1);
   const targetLength = CONFIG.track.baseLength + CONFIG.track.lengthPerLevel * (level - 1);
-  const minSamples = Math.max(24, Math.round((targetLength * 0.55) / CONFIG.track.step));
+  const minSamples = Math.max(24, Math.round((targetLength * 0.82) / CONFIG.track.step));
+
+  // The city widens as the limo lengthens; alleys widen at half the rate so
+  // they stay the pinch point they are meant to be.
+  const grow = CONFIG.track.widthPerLevel * (level - 1);
+  const widths = {
+    road: CONFIG.track.roadWidth + grow,
+    alley: CONFIG.track.alleyWidth + grow * 0.5,
+    plaza: CONFIG.track.plazaWidth + grow,
+  };
 
   let best = null;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     const trySeed = (baseSeed + attempt * 7919) >>> 0;
     const rng = new Rng(trySeed);
-    const samples = buildCenterline(rng, targetLength, difficulty);
+    const samples = buildCenterline(rng, targetLength, difficulty, widths);
     const track = new Track(samples, { level, seed: trySeed });
     const edges = computeEdges(track);
 
@@ -688,7 +697,7 @@ export function generateTrack(world, { level = 1, seed = null, attempts = 8 } = 
   // provably clear. A short contract is fine; a blocked one is not.
   const fallback = best || (() => {
     const rng = new Rng(baseSeed);
-    const samples = buildCenterline(rng, targetLength * 0.5, difficulty * 0.5);
+    const samples = buildCenterline(rng, targetLength * 0.5, difficulty * 0.5, widths);
     const track = new Track(samples, { level, seed: baseSeed });
     return { track, edges: computeEdges(track), rng, samples };
   })();

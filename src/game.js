@@ -352,6 +352,9 @@ export class Game {
     this.wallHits = 0;
     this.playerIndex = 0;
     this.finished = false;
+    this.stuckTimer = 0;
+    this.stuckCount = 0;
+    this.stuckEscapeFrom = 0;
     this.flash = 0;
     this.toast.life = 0;
     this.input.releaseAll();
@@ -644,14 +647,40 @@ export class Game {
    */
   _checkStuck(dt) {
     const moving = this.limo.speed > 1.1 || this.limo.airTime > 0;
-    this.stuckTimer = moving ? 0 : (this.stuckTimer || 0) + dt;
+    if (moving) {
+      this.stuckTimer = 0;
+      // Only real forward progress clears the escalation.
+      if (this.playerIndex > (this.stuckEscapeFrom || 0) + 3) this.stuckCount = 0;
+      return;
+    }
+    this.stuckTimer = (this.stuckTimer || 0) + dt;
     if (this.stuckTimer < 1.6) return;
+
     this.stuckTimer = 0;
-    this.limo.respawnAt(this.track, Math.max(0, this.playerIndex));
-    this.rig.snapToAnchors();
+    this.stuckCount = (this.stuckCount || 0) + 1;
+    this.stuckEscapeFrom = this.playerIndex;
+    // Each repeat drops us further down the road, so a limo wedged across a
+    // tight alley always gets past it instead of re-wedging in the same spot.
+    this.placeLimoAt(this.playerIndex + Math.min(6, this.stuckCount));
     this.camera.addTrauma(0.18);
     this._say('REALIGNED', '#4fd2e8');
     Sound.play('bump', 0.5);
+  }
+
+  /**
+   * Move the whole rig to a point on the route. Cargo is snapped along with it
+   * — moving the limo out from under an attached load would stretch every strap
+   * across the teleport distance and shear the roof clean off.
+   */
+  placeLimoAt(index) {
+    const target = clamp(index, 0, this.track.finish.index - 1);
+    this.limo.respawnAt(this.track, target);
+    this.rig.snapToAnchors();
+    this.playerIndex = this.track.nearestIndex(
+      this.limo.cab.position.x,
+      this.limo.cab.position.y,
+      -1
+    );
   }
 
   _checkProgress() {
@@ -812,10 +841,13 @@ export class Game {
   /** Rewarded-ad continue: cargo re-strapped, extra time, back on the road. */
   _rescueRun() {
     this.rescueUsed = true;
-    const restored = this.rig.restoreAll();
     this.timeLeft = Math.max(this.timeLeft, 0) + 15;
     this.finished = false;
-    this.limo.respawnAt(this.track, Math.max(0, this.playerIndex - 1));
+    this.stuckTimer = 0;
+    this.stuckCount = 0;
+    // Straighten the limo out first, then re-strap everything onto it.
+    this.placeLimoAt(this.playerIndex - 1);
+    const restored = this.rig.restoreAll();
     this.camera.addTrauma(0.2);
     this._say(`${restored} ITEMS RE-STRAPPED · +15s`, '#5affa0');
     Sound.play('checkpoint');
