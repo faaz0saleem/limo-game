@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Limo Drift: Maximum Cargo</title>
+    <meta
+      name="description"
+      content="Drift an infinitely stretchy limousine through a chaotic city without spilling the increasingly absurd cargo strapped to its roof."
+    />
+    <meta name="theme-color" content="#171922" />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171922'/%3E%3Crect x='3' y='13' width='26' height='7' rx='3' fill='%2312141c' stroke='%23e8c66a'/%3E%3Ccircle cx='9' cy='21' r='2.4' fill='%230a0b10'/%3E%3Ccircle cx='23' cy='21' r='2.4' fill='%230a0b10'/%3E%3Ccircle cx='16' cy='9' r='4' fill='%23fdf3ea' stroke='%23ff8fb1'/%3E%3C/svg%3E"
+    />
+    <!-- Poki SDK. Absent locally / when blocked: the game falls back to a stub. -->
+    <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
+    <script src="vendor/matter.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="boot-error">Something went wrong while loading.</div>
+
+      <!-- ================= Loading ================= -->
+      <section class="screen active" id="screen-loading">
+        <div class="panel">
+          <h1 class="logo">
+            <span class="logo-top">LIMO DRIFT</span>
+            <span class="logo-bottom">MAXIMUM CARGO</span>
+          </h1>
+          <div class="loading-track"><div id="loading-bar"></div></div>
+          <p class="muted">Waxing an unreasonably long car…</p>
+        </div>
+      </section>
+
+      <!-- ================= Menu ================= -->
+      <section class="screen" id="screen-menu">
+        <div class="panel wide">
+          <h1 class="logo">
+            <span class="logo-top">LIMO DRIFT</span>
+            <span class="logo-bottom">MAXIMUM CARGO</span>
+          </h1>
+
+          <div class="stat-row">
+            <div class="stat"><b id="cash-menu">$0</b><span>Garage cash</span></div>
+            <div class="stat"><b id="best-menu">0</b><span>Best score</span></div>
+          </div>
+
+          <button class="btn primary big" id="btn-play">
+            <span id="btn-play-label">START YOUR SHIFT</span>
+          </button>
+
+          <div class="menu-actions">
+            <button class="btn" id="btn-garage">🔧 Garage</button>
+            <button class="btn icon" id="btn-mute" title="Mute (M)">🔊</button>
+          </div>
+
+          <div class="controls-help">
+            <span><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> steer</span>
+            <span><kbd>Space</kbd> turbo</span>
+            <span><kbd>Shift</kbd> handbrake</span>
+            <span><kbd>H</kbd> horn</span>
+            <span><kbd>R</kbd> restart</span>
+          </div>
+
+          <h2 class="section-title">Contracts</h2>
+          <div id="level-grid" class="level-grid"></div>
+        </div>
+      </section>
+
+      <!-- ================= Garage ================= -->
+      <section class="screen" id="screen-garage">
+        <div class="panel wide">
+          <div class="panel-head">
+            <h2>Garage</h2>
+            <div class="cash-pill">💵 <b id="cash-garage">$0</b></div>
+          </div>
+          <p class="muted">
+            Cash comes from clean deliveries. Everything here is pure showmanship.
+          </p>
+          <div id="garage-slots"></div>
+          <button class="btn primary" id="btn-garage-back">Back</button>
+        </div>
+      </section>
+
+      <!-- ================= Countdown ================= -->
+      <section class="screen transparent" id="screen-countdown">
+        <div class="countdown">
+          <div id="countdown-text">3</div>
+          <ul id="cargo-manifest" class="manifest"></ul>
+        </div>
+      </section>
+
+      <!-- ================= Pause ================= -->
+      <section class="screen" id="screen-pause">
+        <div class="panel">
+          <h2>Paused</h2>
+          <button class="btn primary" id="btn-resume">Resume</button>
+          <button class="btn" id="btn-pause-restart">Restart level</button>
+          <button class="btn ghost" id="btn-pause-menu">Quit to menu</button>
+        </div>
+      </section>
+
+      <!-- ================= Result ================= -->
+      <section class="screen" id="screen-result">
+        <div class="panel">
+          <h2 id="result-title" class="win">DELIVERED!</h2>
+          <div id="result-stars" class="stars"></div>
+          <p class="muted" id="result-sub"></p>
+          <ul id="result-lines" class="score-lines"></ul>
+          <div class="total-row">
+            <span>TOTAL</span><b id="result-total">0</b>
+          </div>
+          <div class="cash-row">Earned <b id="result-cash">$0</b></div>
+          <button class="btn primary" id="btn-result-primary">NEXT</button>
+          <button class="btn reward" id="btn-result-reward">▶ WATCH AD</button>
+          <button class="btn" id="btn-result-retry">Replay level</button>
+          <button class="btn ghost" id="btn-result-menu">Menu</button>
+        </div>
+      </section>
+
+      <!-- ================= Ad cover ================= -->
+      <div id="ad-overlay"><div class="spinner"></div><p>Advertisement</p></div>
+
+      <!-- ================= Touch controls ================= -->
+      <div id="touch-controls">
+        <div class="touch-left-group">
+          <button class="touch-btn" id="touch-left">◀</button>
+          <button class="touch-btn" id="touch-right">▶</button>
+        </div>
+        <div class="touch-right-group">
+          <button class="touch-btn small" id="touch-brake">✋</button>
+          <button class="touch-btn boost" id="touch-boost">TURBO</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
