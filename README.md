@@ -7,7 +7,7 @@ arriving sideways.
 Built on [three.js](https://threejs.org). **No build step and no external
 assets** — every texture, model and sound in the game is generated
 procedurally at load time, and three.js itself is vendored into the repo. The
-only network request is the optional Poki SDK (see below); block it and the
+only network request is the portal SDK (CrazyGames or Poki); block it and the
 game still plays.
 
 ---
@@ -53,44 +53,73 @@ there for exactly one reason.
 
 ---
 
-## Publishing to Poki
+## Publishing to a portal (CrazyGames / Poki)
 
-`src/poki.js` wraps the Poki SDK, which `index.html` loads from Poki's CDN.
-Everything degrades gracefully: local dev, offline, or an ad blocker leaves
-`window.PokiSDK` undefined and the bridge falls through to a stub, so nothing
-in the game ever depends on an ad having played.
+`src/portal.js` is a single abstraction over both portals. **Exactly one SDK is
+loaded at runtime** — shipping two ad SDKs in one build fails review on both —
+chosen by one line in `index.html`:
 
-Wired up:
+```html
+<script>window.GAME_PORTAL = 'crazygames';</script>   <!-- or 'poki', or 'none' -->
+```
 
-- `gameLoadingStart` / `gameLoadingProgress` / `gameLoadingFinished` around the
-  procedural build.
-- `gameplayStart` / `gameplayStop` bracketing play, including pause, tab-hide
-  and ad breaks.
-- `commercialBreak` **only between fares**, and never on the first two — the
-  simulation freezes without showing the pause menu, and the audio mutes for
-  the duration, as Poki requires.
-- `happyTime` on a big payday or a huge drift.
+Append `?portal=none` to the URL to force the standalone path while testing.
 
-To upload, zip the repo root (`index.html`, `styles.css`, `src/`,
-`vendor/three/`). `node_modules/` is gitignored and not needed. Nothing is
-compiled, so what's in the repo is what ships.
+Wired up for both portals:
+
+| | CrazyGames | Poki |
+| --- | --- | --- |
+| loading | `game.loadingStart/Stop` | `gameLoadingStart/Progress/Finished` |
+| gameplay | `game.gameplayStart/Stop` | `gameplayStart/Stop` |
+| reward moment | `game.happytime()` | `happyTime()` |
+| interstitial | `ad.requestAd('midgame')` | `commercialBreak()` |
+| storage | `SDK.data` | `localStorage` |
+
+Ads only ever run **between fares**, never mid-drive, and not until the third
+one — the simulation freezes without showing the pause menu and the audio mutes
+for the duration, which both portals require. If the SDK is missing, blocked by
+an ad blocker, or its CDN hangs (8s timeout), everything falls through to a
+stub and the game plays normally. Nothing depends on an ad having played.
+
+### Uploading
+
+Zip the repo root — `index.html`, `styles.css`, `src/`, `vendor/three/`. That's
+about 2.3 MB. There is no build step, so what's in the repo is what ships, and
+`node_modules/` is gitignored and not needed.
 
 ### Portal-specific behaviour
 
 - **High-DPI.** The HUD canvases declare their display size in CSS and size
-  their backing store separately, so they stay 320/220 CSS px at any device
-  pixel ratio.
-- **Blocked storage.** Third-party storage is often unavailable in a portal
-  iframe, so every `localStorage` access — reads included — is wrapped.
-- **Mobile.** Phones and tablets (coarse pointer, or a screen under 600px)
-  default to the low preset and get an on-screen thumb pad. Touch-capable
-  laptops don't.
-- **Audio.** The context is created inside the start-button gesture and
-  resumed explicitly, which Safari and in-app browsers need.
-- **Quality changes reload the page.** The city, traffic fleet, light pool,
-  shadow maps and particle pools are all built from the preset, so switching it
-  has to rebuild the world; a reload is the honest way to do that and takes
-  about a second.
+  their backing store separately, so they stay correct at any device pixel
+  ratio.
+- **Blocked storage.** Portal iframes routinely partition third-party storage,
+  so saves go through `portal.getItem/setItem`, which tries the portal's own
+  store, then `localStorage`, then memory.
+- **Mobile.** Phones and tablets default to the low preset, get an on-screen
+  thumb pad, a tightened HUD (both a narrow-width *and* a short-height media
+  query, since an 860x360 handset matches neither alone), safe-area insets for
+  notches, and a rotate prompt in portrait.
+- **Audio.** The context is created inside the start-button gesture and resumed
+  explicitly, which Safari and in-app browsers need.
+- **Quality changes reload the page**, because the city, traffic fleet, light
+  pool, shadow maps and particle pools are all built from the preset.
+
+## Game shell
+
+Everything a portal expects a finished game to have:
+
+- **Loading screen** with a real progress bar, percentage and rotating tips.
+- **Title screen** showing lifetime records (best shift, best drift, most fares).
+- **How to play** panel.
+- **Settings**: graphics preset, sound on/off, music on/off, volume slider, and
+  a reset-records option. Persisted.
+- **Pause**, from `Esc` or an on-screen button, with live shift stats.
+- **End of shift** summary — take-home pay, fares, best drift, distance and top
+  speed, with a star on anything that beat a personal best — then *drive again*
+  without a reload.
+- **Fullscreen** toggle.
+- **Music**: a synthesised synthwave bed scheduled on the WebAudio clock, whose
+  filter opens up as you drive faster. Zero bytes of audio data.
 
 ## Graphics
 
@@ -163,9 +192,14 @@ src/
     chaseCamera.js    travel-direction chase camera with boom collision
     input.js          keyboard / gamepad / touch
     gameplay.js       fares, timers, payouts, drift scoring
-  ui/hud.js           canvas speedometer, minimap, fare card
-  audio/engine.js     synthesised engine, tyres, wind, impacts
-  poki.js             Poki SDK bridge, with a stub when the SDK is absent
+    save.js           records + settings, stored via the portal
+  ui/
+    hud.js            canvas speedometer, minimap, fare card
+    menus.js          loading, title, settings, pause, summary screens
+  audio/
+    engine.js         synthesised engine, tyres, wind, impacts
+    music.js          synthesised synthwave bed
+  portal.js           CrazyGames / Poki adapter, with a standalone stub
 vendor/three/         three.js r169 + the addons used (MIT)
 ```
 

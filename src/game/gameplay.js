@@ -54,6 +54,22 @@ export class Gameplay {
     this.nextFare(new THREE.Vector3());
   }
 
+  /** Wipe the shift back to zero and hand out a fresh fare. */
+  reset(playerPos) {
+    this.cash = 0;
+    this.fares = 0;
+    this.bestDrift = 0;
+    this.driftScore = 0;
+    this.driftMult = 1;
+    this.driftBank = 0;
+    this.driftActive = false;
+    this._driftCooldown = 0;
+    this._driftTimer = 0;
+    this.stats = { distance: 0, topSpeed: 0, crashes: 0, longestDrift: 0 };
+    this.hud.hideDrift();
+    this.nextFare(playerPos);
+  }
+
   /* ------------------------------------------------------------- fares */
 
   nextFare(playerPos) {

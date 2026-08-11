@@ -1,0 +1,209 @@
+import { formatMoney } from '../util.js';
+
+/* Every screen outside the HUD: loading, title, how-to, settings, pause and
+ * the end-of-shift summary. Owns the DOM so main.js only deals in callbacks. */
+
+const TIPS = [
+  'Hold the handbrake through a corner — the multiplier climbs the longer you stay sideways.',
+  'The painted ring in the central plaza is there for donuts. Use it.',
+  'Boost recharges whenever you are off it. Save it for the long avenues.',
+  'You have to slow down to pick a passenger up. Arriving at 200 km/h just drives past them.',
+  'Crashing cancels the drift you were building. Land it before you bank it.',
+  'Press C to change camera. The hood view is the fastest-feeling one.',
+  'Delivering with time to spare pays a bonus on top of the fare.',
+  'Traffic brakes for you, but it still hurts. Weave, do not bulldoze.',
+];
+
+const PANELS = ['panel-loading', 'panel-start', 'panel-howto', 'panel-settings',
+  'panel-pause', 'panel-summary'];
+
+export class Menus {
+  constructor(handlers = {}) {
+    this.h = handlers;
+    this.overlay = document.getElementById('overlay');
+    this.el = {};
+    for (const id of PANELS) this.el[id] = document.getElementById(id);
+
+    this.bar = document.getElementById('loadbar-fill');
+    this.loadText = document.getElementById('loadtext');
+    this.loadPct = document.getElementById('loadpct');
+    this.loadTip = document.getElementById('load-tip');
+
+    this._tipIndex = Math.floor(Math.random() * TIPS.length);
+    this.loadTip.textContent = TIPS[this._tipIndex];
+    this._tipTimer = setInterval(() => {
+      this._tipIndex = (this._tipIndex + 1) % TIPS.length;
+      this.loadTip.textContent = TIPS[this._tipIndex];
+    }, 4200);
+
+    this._bind();
+    this._bindRotateHint();
+  }
+
+  _bind() {
+    const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+
+    on('btn-start', () => this.h.onStart?.());
+    on('btn-again', () => this.h.onRestart?.());
+    on('btn-resume', () => this.h.onResume?.());
+    on('btn-end-shift', () => this.h.onEndShift?.());
+    on('btn-settings', () => this.show('panel-settings'));
+    on('btn-pause-settings', () => this.show('panel-settings', 'panel-pause'));
+    on('btn-howto', () => this.show('panel-howto'));
+    on('btn-pause', () => this.h.onPause?.());
+    on('btn-fullscreen', () => this.toggleFullscreen());
+    on('btn-reset', () => {
+      this.h.onResetRecords?.();
+      this._flash('btn-reset', 'records cleared');
+    });
+
+    // "BACK" buttons remember where they came from.
+    for (const b of document.querySelectorAll('[data-back]')) {
+      b.addEventListener('click', () => this.show(this._returnTo || b.dataset.back));
+    }
+
+    // Settings segmented controls.
+    this._segment('seg-quality', 'q', (v) => this.h.onQuality?.(v));
+    this._segment('seg-sound', 'v', (v) => this.h.onSound?.(v === 'on'));
+    this._segment('seg-music', 'v', (v) => this.h.onMusic?.(v === 'on'));
+
+    const vol = document.getElementById('rng-volume');
+    vol?.addEventListener('input', () => this.h.onVolume?.(vol.value / 100));
+  }
+
+  _segment(groupId, attr, fn) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    group.addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      for (const b of group.querySelectorAll('.seg-btn')) b.classList.remove('is-on');
+      btn.classList.add('is-on');
+      fn(btn.dataset[attr]);
+    });
+  }
+
+  _flash(id, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const old = el.textContent;
+    el.textContent = text;
+    setTimeout(() => { el.textContent = old; }, 1400);
+  }
+
+  /** Portrait phones get a nudge; landscape is a much better play area. */
+  _bindRotateHint() {
+    const hint = document.getElementById('rotate-hint');
+    if (!hint) return;
+    const check = () => {
+      const coarse = window.matchMedia?.('(pointer: coarse)')?.matches;
+      const portrait = window.innerHeight > window.innerWidth;
+      hint.classList.toggle('hidden', !(coarse && portrait));
+    };
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+  }
+
+  /* ---------------------------------------------------------------- panels */
+
+  show(id, returnTo = null) {
+    this._returnTo = returnTo;
+    // Coming back to the title after a shift must show the updated records.
+    if (id === 'panel-start' && this.h.getRecords) this._paintRecords(this.h.getRecords());
+    this.overlay.classList.remove('hidden');
+    for (const p of PANELS) this.el[p]?.classList.toggle('hidden', p !== id);
+  }
+
+  hide() {
+    this.overlay.classList.add('hidden');
+  }
+
+  get visible() {
+    return !this.overlay.classList.contains('hidden');
+  }
+
+  /* --------------------------------------------------------------- loading */
+
+  setProgress(pct, text) {
+    this.bar.style.width = `${pct}%`;
+    this.loadPct.textContent = `${Math.round(pct)}%`;
+    if (text) this.loadText.textContent = text;
+  }
+
+  doneLoading() {
+    clearInterval(this._tipTimer);
+  }
+
+  /* ----------------------------------------------------------------- title */
+
+  showTitle(records) {
+    this._paintRecords(records);
+    this.show('panel-start');
+  }
+
+  _paintRecords(records) {
+    document.getElementById('rec-cash').textContent = formatMoney(records.bestCash);
+    document.getElementById('rec-drift').textContent =
+      Math.round(records.bestDrift).toLocaleString('en-US');
+    document.getElementById('rec-fares').textContent = records.bestFares;
+  }
+
+  syncSettings(s, resolvedQuality) {
+    const pick = (groupId, value) => {
+      const group = document.getElementById(groupId);
+      if (!group) return;
+      for (const b of group.querySelectorAll('.seg-btn')) {
+        const v = b.dataset.q ?? b.dataset.v;
+        b.classList.toggle('is-on', v === value);
+      }
+    };
+    pick('seg-quality', s.quality ?? resolvedQuality);
+    pick('seg-sound', s.sound ? 'on' : 'off');
+    pick('seg-music', s.music ? 'on' : 'off');
+    const vol = document.getElementById('rng-volume');
+    if (vol) vol.value = Math.round((s.volume ?? 0.8) * 100);
+  }
+
+  /* ----------------------------------------------------------------- pause */
+
+  showPause(stats) {
+    document.getElementById('pause-stats').innerHTML =
+      `<span>${formatMoney(stats.cash)} earned</span>` +
+      `<span>·</span><span><b>${stats.fares}</b> fares</span>` +
+      `<span>·</span><span>best drift <b>${Math.round(stats.bestDrift).toLocaleString('en-US')}</b></span>`;
+    this.show('panel-pause');
+  }
+
+  /* --------------------------------------------------------------- summary */
+
+  showSummary(shift, records) {
+    document.getElementById('sum-cash').textContent = formatMoney(shift.cash);
+
+    const cells = [
+      ['FARES DELIVERED', shift.fares, records.fares],
+      ['BEST DRIFT', Math.round(shift.bestDrift).toLocaleString('en-US'), records.drift],
+      ['DISTANCE', `${(shift.distance / 1000).toFixed(2)} km`, false],
+      ['TOP SPEED', `${Math.round(shift.topSpeed)} km/h`, records.speed],
+    ];
+    document.getElementById('sum-grid').innerHTML = cells.map(([k, v, rec]) =>
+      `<div class="sum-cell${rec ? ' is-record' : ''}">
+         <span class="sum-k">${k}</span><span class="sum-v">${v}</span>
+       </div>`).join('');
+
+    this.show('panel-summary');
+  }
+
+  /* ------------------------------------------------------------ fullscreen */
+
+  toggleFullscreen() {
+    const el = document.documentElement;
+    try {
+      if (!document.fullscreenElement) {
+        (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el);
+      } else {
+        (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
+      }
+    } catch { /* portals sometimes disallow it; not worth surfacing */ }
+  }
+}

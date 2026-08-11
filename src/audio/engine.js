@@ -13,6 +13,17 @@ export class EngineAudio {
     this.ctx = null;
     this.ready = false;
     this.muted = false;
+    this.volume = 0.8;
+  }
+
+  /** Master volume, kept separate from mute so the two compose cleanly. */
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, v ?? 0.8));
+    if (this.ready) {
+      this.master.gain.setTargetAtTime(
+        this.muted ? 0 : 0.5 * this.volume, this.ctx.currentTime, 0.1,
+      );
+    }
   }
 
   /** Must be called from a user gesture — browsers block audio otherwise. */
@@ -105,13 +116,15 @@ export class EngineAudio {
     this.ready = true;
 
     // Fade the master in so the engine doesn't thump on start.
-    this.master.gain.setTargetAtTime(this.muted ? 0 : 0.5, ctx.currentTime, 0.35);
+    this.master.gain.setTargetAtTime(this.muted ? 0 : 0.5 * this.volume, ctx.currentTime, 0.35);
   }
 
   setMuted(m) {
     this.muted = m;
     if (this.ready) {
-      this.master.gain.setTargetAtTime(m ? 0 : 0.5, this.ctx.currentTime, 0.08);
+      this.master.gain.setTargetAtTime(
+        m ? 0 : 0.5 * this.volume, this.ctx.currentTime, 0.08,
+      );
     }
   }
 

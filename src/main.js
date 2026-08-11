@@ -12,29 +12,20 @@ import { Input } from './game/input.js';
 import { Gameplay } from './game/gameplay.js';
 import { HUD } from './ui/hud.js';
 import { EngineAudio } from './audio/engine.js';
-import { Poki } from './poki.js';
+import { portal } from './portal.js';
+import { save } from './game/save.js';
+import { Music } from './audio/music.js';
+import { Menus } from './ui/menus.js';
 import { clamp, damp, lerp } from './util.js';
 
 /* ---------------------------------------------------------------- boot */
 
-const dom = {
-  overlay: document.getElementById('overlay'),
-  loading: document.getElementById('panel-loading'),
-  start: document.getElementById('panel-start'),
-  pause: document.getElementById('panel-pause'),
-  bar: document.getElementById('loadbar-fill'),
-  loadText: document.getElementById('loadtext'),
-  btnStart: document.getElementById('btn-start'),
-  btnResume: document.getElementById('btn-resume'),
-  noWebGL: document.getElementById('nowebgl'),
-};
-
+let menus;                      // created in boot(), before anything else
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 function progress(pct, text) {
-  dom.bar.style.width = `${pct}%`;
-  if (text) dom.loadText.textContent = text;
-  Poki.loadingProgress(pct / 100);
+  menus.setProgress(pct, text);
+  portal.loadingProgress(pct / 100);
 }
 
 /* --------------------------------------------------------------- game */
@@ -48,6 +39,8 @@ class Game {
     this.elapsed = 0;
     this.smokeAcc = 0;
     this.exhaustAcc = 0;
+    this.music = new Music();
+    this._adMuted = false;
   }
 
   async build() {
@@ -106,19 +99,21 @@ class Game {
       onEvent: (type, data) => {
         if (type === 'fare-paid') {
           this.audio.chime(true);
-          if (data?.payout > 700) Poki.happyTime(0.8);
+          if (data?.payout > 700) portal.happyTime(0.8);
           // Only ever break between fares — never while the player is driving.
-          if (Poki.shouldShowInterstitial()) this._adBreak();
+          if (portal.shouldShowInterstitial()) this._adBreak();
         } else if (type === 'picked-up') this.audio.chime(true);
         else if (type === 'fare-lost') this.audio.chime(false);
         else if (type === 'drift-banked') {
           this.audio.chime(true);
-          if (data?.total > 3000) Poki.happyTime(0.6);
+          if (data?.total > 3000) portal.happyTime(0.6);
         }
       },
     });
 
     this._bindKeys();
+    this._startPos = start.clone();
+    this._startHeading = this.vehicle.heading;
     progress(100, 'ready');
   }
 
@@ -193,33 +188,106 @@ class Game {
     this.hud.toast('RECOVERED');
   }
 
+  /** The title button both starts the first shift and begins a new one. */
+  startOrRestart() {
+    if (this._shiftEnded) this.restart();
+    else this.begin();
+  }
+
   begin() {
+    const first = !this.running;
+    this._shiftEnded = false;
     this.running = true;
     this.paused = false;
-    dom.overlay.classList.add('hidden');
+    menus.hide();
     this.hud.show();
+
+    // Audio must be created inside the click that got us here.
     this.audio.start();
-    Poki.gameplayStart();
+    if (this.audio.ready) {
+      this.music.attach(this.audio.ctx, this.audio.bus);
+      this.music.start();
+    }
+    this.applyAudioSettings();
+
+    portal.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
-    this._loop();
+    if (first) this._loop();
+  }
+
+  /** Push the saved sound/music/volume settings into the audio engines. */
+  applyAudioSettings() {
+    const s = save.settings;
+    this.audio.setMuted(this._adMuted || !s.sound);
+    this.audio.setVolume?.(s.volume);
+    this.music.setEnabled(!this._adMuted && s.music);
+    this.music.setVolume(s.volume);
+  }
+
+  /** Portals require silence for the duration of a break. */
+  setAdMuted(muted) {
+    this._adMuted = muted;
+    this.applyAudioSettings();
+  }
+
+  /** Explicit pause state, so menus and the Esc key can't get out of sync. */
+  setPaused(paused) {
+    if (!this.running || this.paused === paused) return;
+    this.paused = paused;
+    if (paused) {
+      this.audio.suspend();
+      portal.gameplayStop();
+      menus.showPause({
+        cash: this.play.cash,
+        fares: this.play.fares,
+        bestDrift: this.play.bestDrift,
+      });
+    } else {
+      menus.hide();
+      this.audio.resume();
+      portal.gameplayStart();
+      this.clock.getDelta();          // discard the paused interval
+    }
+  }
+
+  /** Bank the shift, show the summary, and stand the car back at the start. */
+  endShift() {
+    if (!this.running) return;
+    this.paused = true;
+    this.audio.suspend();
+    portal.gameplayStop();
+
+    const shift = {
+      cash: this.play.cash,
+      fares: this.play.fares,
+      bestDrift: this.play.bestDrift,
+      distance: this.play.stats.distance,
+      topSpeed: this.play.stats.topSpeed,
+    };
+    const records = save.recordShift(shift);
+    this._shiftEnded = true;
+    this.hud.hide();
+    menus.showSummary(shift, records);
+  }
+
+  /** Fresh shift without reloading: reset the car, the score and the marks. */
+  restart() {
+    this.vehicle.reset(this._startPos, this._startHeading);
+    this.chase.reset(this.vehicle);
+    this.skids.clear();
+    this.particles.clear();
+    this.play.reset(this.vehicle.position);
+    this._roll = 0;
+    this._pitch = 0;
+    this.elapsed = 0;
+    this.begin();
   }
 
   togglePause() {
-    if (!this.running) return;
-    this.paused = !this.paused;
-    dom.overlay.classList.toggle('hidden', !this.paused);
-    dom.loading.classList.add('hidden');
-    dom.start.classList.add('hidden');
-    dom.pause.classList.toggle('hidden', !this.paused);
-    if (this.paused) {
-      this.audio.suspend();
-      Poki.gameplayStop();
-    } else {
-      this.audio.resume();
-      Poki.gameplayStart();
-      this.clock.getDelta();          // discard the paused interval
-    }
+    // Esc must not dismiss the summary — that screen owns its own exit.
+    if (!this.running || menus.el['panel-summary']?.classList.contains('hidden') === false) return;
+    this.setPaused(!this.paused);
   }
 
   /**
@@ -232,12 +300,12 @@ class Game {
     this._adPaused = true;
     this.audio.suspend();
     try {
-      await Poki.commercialBreak();
+      await portal.commercialBreak();
     } finally {
       this._adPaused = false;
       if (!this.paused) {
         this.audio.resume();
-        Poki.gameplayStart();
+        portal.gameplayStart();
       }
       this.clock.getDelta();        // don't integrate the ad's duration
     }
@@ -447,6 +515,7 @@ class Game {
       drifting: v.isDrifting,
     }, raw);
 
+    this.music.setIntensity(v.speed01);
     this.hud.update(raw, v, this.play.objective, this.traffic);
     this.stage.update(raw, { speed01: v.speed01, damage: v.impact });
     this.stage.render();
@@ -472,75 +541,88 @@ function defaultQuality() {
 }
 
 async function boot() {
+  menus = new Menus();
+  menus.setProgress(4, 'contacting the portal');
+
+  // The portal has to come up first: it owns the storage the settings live in.
+  await portal.init();
+  portal.loadingStart();
+
+  const settings = save.load().settings;
+  const quality = QUALITY[settings.quality] ? settings.quality : defaultQuality();
+
   let stage;
-  let quality = defaultQuality();
-
-  // Remember the player's choice between sessions. In a portal iframe with
-  // third-party storage blocked, touching localStorage throws — hence the
-  // try/catch around even the read.
-  try {
-    const saved = localStorage.getItem('limo.quality');
-    if (saved && QUALITY[saved]) quality = saved;
-  } catch { /* storage may be blocked; the default is fine */ }
-
-  await Poki.init();
-  Poki.loadingStart();
-
   try {
     stage = new Stage(document.getElementById('scene'), quality);
   } catch (err) {
     console.error('WebGL init failed', err);
-    dom.overlay.classList.add('hidden');
-    dom.noWebGL.classList.remove('hidden');
+    menus.hide();
+    document.getElementById('nowebgl').classList.remove('hidden');
     return;
-  }
-
-  for (const btn of document.querySelectorAll('.qbtn')) {
-    btn.classList.toggle('is-on', btn.dataset.q === quality);
-    btn.addEventListener('click', () => {
-      if (btn.dataset.q === stage.quality) return;
-      for (const b of document.querySelectorAll('.qbtn')) b.classList.remove('is-on');
-      btn.classList.add('is-on');
-      try { localStorage.setItem('limo.quality', btn.dataset.q); } catch { /* ignore */ }
-      // The city, traffic fleet, light pool, shadow maps and particle pools
-      // are all built from the preset, so changing it has to rebuild the
-      // world. Reloading is the honest way to do that, and the whole game is
-      // procedural so it comes back in about a second.
-      dom.start.classList.add('hidden');
-      dom.loading.classList.remove('hidden');
-      location.reload();
-    });
   }
 
   const game = new Game(stage);
   window.__limo = game;              // handy for debugging from the console
 
+  /* ------------------------------------------------------- menu callbacks */
+  menus.h = {
+    onStart: () => game.startOrRestart(),
+    onResume: () => game.setPaused(false),
+    onPause: () => game.setPaused(true),
+    onRestart: () => game.restart(),
+    onEndShift: () => game.endShift(),
+
+    onQuality: (q) => {
+      if (q === stage.quality) return;
+      save.setSetting('quality', q);
+      // The city, traffic fleet, light pool, shadow maps and particle pools are
+      // all built from the preset, so changing it has to rebuild the world.
+      // Reloading is the honest way to do that, and the whole game is
+      // procedural so it comes back in about a second.
+      menus.show('panel-loading');
+      menus.setProgress(0, 'rebuilding the city');
+      location.reload();
+    },
+    onSound: (on) => {
+      save.setSetting('sound', on);
+      game.applyAudioSettings();
+    },
+    onMusic: (on) => {
+      save.setSetting('music', on);
+      game.applyAudioSettings();
+    },
+    onVolume: (v) => {
+      save.setSetting('volume', v);
+      game.applyAudioSettings();
+    },
+    getRecords: () => save.load(),
+    onResetRecords: () => {
+      save.reset();
+      menus.syncSettings(save.settings, stage.quality);
+      game.applyAudioSettings();
+    },
+  };
+
   try {
     await game.build();
   } catch (err) {
     console.error('Build failed', err);
-    dom.loadText.textContent = 'something broke — check the console';
+    menus.setProgress(100, 'something broke — check the console');
     return;
   }
 
-  // Render one frame behind the menu so the city is already there.
+  // Park the camera on the skyline so the menu has the city behind it.
   stage.camera.position.set(30, 14, 46);
   stage.camera.lookAt(0, 6, 0);
   stage.render();
 
-  // Let the audio engine drop out while an ad is playing.
-  Poki.onMuteChange((muted) => game.audio.setMuted(muted));
+  // Both portals require the game to silence itself while a break plays.
+  portal.onMuteChange((muted) => game.setAdMuted(muted));
 
-  Poki.loadingFinished();
-  dom.loading.classList.add('hidden');
-  dom.start.classList.remove('hidden');
-
-  const launch = () => {
-    dom.btnStart.removeEventListener('click', launch);
-    game.begin();
-  };
-  dom.btnStart.addEventListener('click', launch);
-  dom.btnResume.addEventListener('click', () => game.togglePause());
+  portal.loadingStop();
+  menus.doneLoading();
+  menus.syncSettings(save.settings, stage.quality);
+  menus.showTitle(save.load());
 }
 
 boot();
