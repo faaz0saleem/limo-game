@@ -4,9 +4,11 @@ A 3D night-city drift game in the browser. You drive eight and a half metres of
 stretch limousine through a neon grid, pick up fares, and get paid extra for
 arriving sideways.
 
-Built on [three.js](https://threejs.org). **No build step, no external assets,
-no network calls** — every texture, model and sound in the game is generated
-procedurally at load time, and three.js itself is vendored into the repo.
+Built on [three.js](https://threejs.org). **No build step and no external
+assets** — every texture, model and sound in the game is generated
+procedurally at load time, and three.js itself is vendored into the repo. The
+only network request is the optional Poki SDK (see below); block it and the
+game still plays.
 
 ---
 
@@ -50,6 +52,45 @@ drift you were building. The central plaza has a painted ring in it, which is
 there for exactly one reason.
 
 ---
+
+## Publishing to Poki
+
+`src/poki.js` wraps the Poki SDK, which `index.html` loads from Poki's CDN.
+Everything degrades gracefully: local dev, offline, or an ad blocker leaves
+`window.PokiSDK` undefined and the bridge falls through to a stub, so nothing
+in the game ever depends on an ad having played.
+
+Wired up:
+
+- `gameLoadingStart` / `gameLoadingProgress` / `gameLoadingFinished` around the
+  procedural build.
+- `gameplayStart` / `gameplayStop` bracketing play, including pause, tab-hide
+  and ad breaks.
+- `commercialBreak` **only between fares**, and never on the first two — the
+  simulation freezes without showing the pause menu, and the audio mutes for
+  the duration, as Poki requires.
+- `happyTime` on a big payday or a huge drift.
+
+To upload, zip the repo root (`index.html`, `styles.css`, `src/`,
+`vendor/three/`). `node_modules/` is gitignored and not needed. Nothing is
+compiled, so what's in the repo is what ships.
+
+### Portal-specific behaviour
+
+- **High-DPI.** The HUD canvases declare their display size in CSS and size
+  their backing store separately, so they stay 320/220 CSS px at any device
+  pixel ratio.
+- **Blocked storage.** Third-party storage is often unavailable in a portal
+  iframe, so every `localStorage` access — reads included — is wrapped.
+- **Mobile.** Phones and tablets (coarse pointer, or a screen under 600px)
+  default to the low preset and get an on-screen thumb pad. Touch-capable
+  laptops don't.
+- **Audio.** The context is created inside the start-button gesture and
+  resumed explicitly, which Safari and in-app browsers need.
+- **Quality changes reload the page.** The city, traffic fleet, light pool,
+  shadow maps and particle pools are all built from the preset, so switching it
+  has to rebuild the world; a reload is the honest way to do that and takes
+  about a second.
 
 ## Graphics
 
@@ -124,6 +165,7 @@ src/
     gameplay.js       fares, timers, payouts, drift scoring
   ui/hud.js           canvas speedometer, minimap, fare card
   audio/engine.js     synthesised engine, tyres, wind, impacts
+  poki.js             Poki SDK bridge, with a stub when the SDK is absent
 vendor/three/         three.js r169 + the addons used (MIT)
 ```
 

@@ -113,9 +113,12 @@ kbd{
 .stat-k{display:block;font-size:.55rem;letter-spacing:.2em;color:var(--dim)}
 .stat-v{display:block;margin-top:3px;font-family:var(--mono);font-size:.94rem;font-weight:700;color:var(--gold)}
 
-#minimap{border-radius:14px;background:rgba(6,9,18,.72);border:1px solid var(--edge);
-  box-shadow:0 18px 40px rgba(0,0,0,.45)}
-#dial{filter:drop-shadow(0 12px 30px rgba(0,0,0,.55))}
+/* Display size MUST be declared here. A canvas without a CSS width lays out
+   at its attribute width in CSS px, so the HiDPI backing store would double
+   the on-screen size on every retina display. */
+#minimap{width:220px;height:220px;border-radius:14px;background:rgba(6,9,18,.72);
+  border:1px solid var(--edge);box-shadow:0 18px 40px rgba(0,0,0,.45)}
+#dial{width:320px;height:320px;filter:drop-shadow(0 12px 30px rgba(0,0,0,.55))}
 
 .drift-banner{
   position:absolute;left:50%;top:19%;transform:translateX(-50%);text-align:center;
@@ -145,7 +148,7 @@ kbd{
 @media (max-width:720px){
   .hud-corner{padding:12px}
   .fare-card{width:200px}
-  #minimap{width:132px;height:132px}
-  #dial{width:190px;height:190px}
+  #minimap{width:112px;height:112px}
+  #dial{width:164px;height:164px}
   .stat-v{font-size:.8rem}
 }

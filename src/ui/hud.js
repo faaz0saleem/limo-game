@@ -40,15 +40,22 @@ export class HUD {
     this._mapCache = null;
   }
 
+  /**
+   * Size only the backing store — the on-screen size comes from CSS. While the
+   * HUD is still hidden the element measures 0, so fall back to the stylesheet
+   * default and re-measure once it is actually visible.
+   */
   _sizeCanvas(canvas, cssSize) {
-    const rect = canvas.getBoundingClientRect();
-    const css = rect.width || cssSize;
-    canvas.width = css * this._dpr;
-    canvas.height = css * this._dpr;
+    const css = canvas.getBoundingClientRect().width || cssSize;
+    canvas.width = Math.round(css * this._dpr);
+    canvas.height = Math.round(css * this._dpr);
     canvas._css = css;
   }
 
-  show() { this.root.classList.remove('hidden'); }
+  show() {
+    this.root.classList.remove('hidden');
+    this.resize();          // now measurable, so lock in the real backing size
+  }
   hide() { this.root.classList.add('hidden'); }
 
   /* --------------------------------------------------------------- fares */

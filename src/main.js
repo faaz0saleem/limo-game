@@ -12,6 +12,7 @@ import { Input } from './game/input.js';
 import { Gameplay } from './game/gameplay.js';
 import { HUD } from './ui/hud.js';
 import { EngineAudio } from './audio/engine.js';
+import { Poki } from './poki.js';
 import { clamp, damp, lerp } from './util.js';
 
 /* ---------------------------------------------------------------- boot */
@@ -33,6 +34,7 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 function progress(pct, text) {
   dom.bar.style.width = `${pct}%`;
   if (text) dom.loadText.textContent = text;
+  Poki.loadingProgress(pct / 100);
 }
 
 /* --------------------------------------------------------------- game */
@@ -101,11 +103,18 @@ class Game {
     this.input = new Input();
     this.audio = new EngineAudio();
     this.play = new Gameplay(scene, this.city, this.hud, {
-      onEvent: (type) => {
-        if (type === 'fare-paid') this.audio.chime(true);
-        else if (type === 'picked-up') this.audio.chime(true);
+      onEvent: (type, data) => {
+        if (type === 'fare-paid') {
+          this.audio.chime(true);
+          if (data?.payout > 700) Poki.happyTime(0.8);
+          // Only ever break between fares — never while the player is driving.
+          if (Poki.shouldShowInterstitial()) this._adBreak();
+        } else if (type === 'picked-up') this.audio.chime(true);
         else if (type === 'fare-lost') this.audio.chime(false);
-        else if (type === 'drift-banked') this.audio.chime(true);
+        else if (type === 'drift-banked') {
+          this.audio.chime(true);
+          if (data?.total > 3000) Poki.happyTime(0.6);
+        }
       },
     });
 
@@ -190,6 +199,7 @@ class Game {
     dom.overlay.classList.add('hidden');
     this.hud.show();
     this.audio.start();
+    Poki.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
     this._loop();
@@ -202,10 +212,34 @@ class Game {
     dom.loading.classList.add('hidden');
     dom.start.classList.add('hidden');
     dom.pause.classList.toggle('hidden', !this.paused);
-    if (this.paused) this.audio.suspend();
-    else {
+    if (this.paused) {
+      this.audio.suspend();
+      Poki.gameplayStop();
+    } else {
       this.audio.resume();
+      Poki.gameplayStart();
       this.clock.getDelta();          // discard the paused interval
+    }
+  }
+
+  /**
+   * Freeze the simulation for an interstitial without showing the pause menu,
+   * then hand control straight back. `_adPaused` is separate from `paused` so
+   * a break can't be dismissed with Esc and can't leave the menu on screen.
+   */
+  async _adBreak() {
+    if (this._adPaused) return;
+    this._adPaused = true;
+    this.audio.suspend();
+    try {
+      await Poki.commercialBreak();
+    } finally {
+      this._adPaused = false;
+      if (!this.paused) {
+        this.audio.resume();
+        Poki.gameplayStart();
+      }
+      this.clock.getDelta();        // don't integrate the ad's duration
     }
   }
 
@@ -373,7 +407,7 @@ class Game {
   _loop = () => {
     if (!this.running) return;
     requestAnimationFrame(this._loop);
-    if (this.paused) return;
+    if (this.paused || this._adPaused) return;
 
     const raw = Math.min(this.clock.getDelta(), 0.1);
     this.elapsed += raw;
@@ -423,15 +457,34 @@ class Game {
 
 /* --------------------------------------------------------------- start */
 
+/**
+ * Phones and tablets get the low preset unless the player says otherwise.
+ *
+ * Deliberately keyed off the pointer type and the physical screen, not the
+ * window size — a 1366x768 laptop or a half-width browser window is still a
+ * desktop GPU and should not be dropped to low.
+ */
+function defaultQuality() {
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches;
+  const tinyScreen = Math.min(window.screen?.width ?? 9999,
+                              window.screen?.height ?? 9999) < 600;
+  return coarse || tinyScreen ? 'low' : 'high';
+}
+
 async function boot() {
   let stage;
-  let quality = 'high';
+  let quality = defaultQuality();
 
-  // Remember the player's choice between sessions.
+  // Remember the player's choice between sessions. In a portal iframe with
+  // third-party storage blocked, touching localStorage throws — hence the
+  // try/catch around even the read.
   try {
     const saved = localStorage.getItem('limo.quality');
     if (saved && QUALITY[saved]) quality = saved;
   } catch { /* storage may be blocked; the default is fine */ }
+
+  await Poki.init();
+  Poki.loadingStart();
 
   try {
     stage = new Stage(document.getElementById('scene'), quality);
@@ -445,10 +498,17 @@ async function boot() {
   for (const btn of document.querySelectorAll('.qbtn')) {
     btn.classList.toggle('is-on', btn.dataset.q === quality);
     btn.addEventListener('click', () => {
+      if (btn.dataset.q === stage.quality) return;
       for (const b of document.querySelectorAll('.qbtn')) b.classList.remove('is-on');
       btn.classList.add('is-on');
-      stage.setQuality(btn.dataset.q);
       try { localStorage.setItem('limo.quality', btn.dataset.q); } catch { /* ignore */ }
+      // The city, traffic fleet, light pool, shadow maps and particle pools
+      // are all built from the preset, so changing it has to rebuild the
+      // world. Reloading is the honest way to do that, and the whole game is
+      // procedural so it comes back in about a second.
+      dom.start.classList.add('hidden');
+      dom.loading.classList.remove('hidden');
+      location.reload();
     });
   }
 
@@ -468,6 +528,10 @@ async function boot() {
   stage.camera.lookAt(0, 6, 0);
   stage.render();
 
+  // Let the audio engine drop out while an ad is playing.
+  Poki.onMuteChange((muted) => game.audio.setMuted(muted));
+
+  Poki.loadingFinished();
   dom.loading.classList.add('hidden');
   dom.start.classList.remove('hidden');
 

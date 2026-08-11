@@ -26,6 +26,9 @@ export class EngineAudio {
 
     const ctx = new Ctx();
     this.ctx = ctx;
+    // Safari and some in-app browsers hand back a suspended context even when
+    // it was created inside a user gesture.
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
     this.master = ctx.createGain();
     this.master.gain.value = 0.0;

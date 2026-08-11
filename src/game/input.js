@@ -47,7 +47,11 @@ export class Input {
   }
 
   _bindTouch() {
-    if (!('ontouchstart' in window)) return;
+    // `ontouchstart` is also true on touch-capable laptops, which have a
+    // keyboard and don't want a thumb pad over the view. A coarse pointer is
+    // the signal that actually means "phone or tablet".
+    const coarse = window.matchMedia?.('(pointer: coarse)')?.matches;
+    if (!coarse) return;
     const zones = document.createElement('div');
     zones.id = 'touch-zones';
     zones.innerHTML = `
