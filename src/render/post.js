@@ -81,9 +81,13 @@ export const CinematicShader = {
   `,
 };
 
-/** Sky-facing gradient applied under everything — cheap horizon lift. */
-export function makeSkyDome(radius = 1800) {
-  const geo = new THREE.SphereGeometry(radius, 32, 20);
+/**
+ * The sky itself: a gradient dome with procedural stars and a sun/moon disc.
+ * Every colour is a uniform so the day/night cycle can drive it, and the stars
+ * fade out as dawn comes up.
+ */
+export function makeSkyDome(radius = 2200) {
+  const geo = new THREE.SphereGeometry(radius, 40, 24);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -92,6 +96,9 @@ export function makeSkyDome(radius = 1800) {
       uTop: { value: new THREE.Color(0x05070f) },
       uHorizon: { value: new THREE.Color(0x1b2450) },
       uGlow: { value: new THREE.Color(0x6a3a5c) },
+      uSunDir: { value: new THREE.Vector3(0.4, 0.6, 0.2) },
+      uStarFade: { value: 1 },
+      uDaylight: { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec3 vWorld;
@@ -101,12 +108,42 @@ export function makeSkyDome(radius = 1800) {
       }
     `,
     fragmentShader: /* glsl */`
-      uniform vec3 uTop, uHorizon, uGlow;
+      uniform vec3 uTop, uHorizon, uGlow, uSunDir;
+      uniform float uStarFade, uDaylight;
       varying vec3 vWorld;
+
+      // Cheap 3D hash — good enough for a star field.
+      float hash13( vec3 p ) {
+        p = fract( p * 0.1031 );
+        p += dot( p, p.yzx + 33.33 );
+        return fract( ( p.x + p.y ) * p.z );
+      }
+
       void main() {
-        float h = normalize( vWorld ).y;
+        vec3 dir = normalize( vWorld );
+        float h = dir.y;
+
         vec3 c = mix( uHorizon, uTop, smoothstep( 0.0, 0.55, h ) );
-        c = mix( c, uGlow, smoothstep( 0.12, -0.06, h ) * 0.75 );
+        c = mix( c, uGlow, smoothstep( 0.14, -0.06, h ) * 0.75 );
+
+        // --- stars: quantise the direction into cells and light a few.
+        if ( uStarFade > 0.01 && h > -0.05 ) {
+          vec3 cell = floor( dir * 260.0 );
+          float r = hash13( cell );
+          if ( r > 0.9965 ) {
+            float tw = 0.65 + 0.35 * sin( uStarFade * 6.2831 + r * 90.0 );
+            float bright = ( r - 0.9965 ) / 0.0035;
+            c += vec3( 0.85, 0.9, 1.0 ) * bright * tw * uStarFade
+                 * smoothstep( -0.05, 0.25, h );
+          }
+        }
+
+        // --- sun / moon disc plus its halo.
+        float sd = max( dot( dir, normalize( uSunDir ) ), 0.0 );
+        vec3 discCol = mix( vec3( 0.86, 0.91, 1.0 ), vec3( 1.0, 0.94, 0.78 ), uDaylight );
+        c += discCol * pow( sd, 2200.0 ) * 3.0;
+        c += discCol * pow( sd, 24.0 ) * ( 0.10 + uDaylight * 0.22 );
+
         gl_FragColor = vec4( c, 1.0 );
       }
     `,

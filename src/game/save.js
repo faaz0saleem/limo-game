@@ -9,6 +9,9 @@ import { portal } from '../portal.js';
 const KEY = 'limo.save.v1';
 
 const DEFAULTS = {
+  wallet: 0,              // cash banked across shifts, spent in the garage
+  owned: ['classic'],
+  car: 'classic',
   bestCash: 0,
   bestDrift: 0,
   bestFares: 0,
@@ -86,12 +89,33 @@ class Save {
     d.bestDrift = Math.max(d.bestDrift, bestDrift);
     d.bestFares = Math.max(d.bestFares, fares);
     d.topSpeed = Math.max(d.topSpeed, topSpeed);
+    d.wallet += Math.max(0, Math.round(cash));
     d.totalFares += fares;
     d.totalDistance += distance;
     d.shiftsPlayed += 1;
 
     this.save();
     return records;
+  }
+
+  /** @returns {boolean} whether the purchase went through */
+  buy(car) {
+    const d = this.load();
+    if (d.owned.includes(car.id)) return true;
+    if (d.wallet < car.price) return false;
+    d.wallet -= car.price;
+    d.owned.push(car.id);
+    d.car = car.id;
+    this.save();
+    return true;
+  }
+
+  equip(id) {
+    const d = this.load();
+    if (!d.owned.includes(id)) return false;
+    d.car = id;
+    this.save();
+    return true;
   }
 
   reset() {

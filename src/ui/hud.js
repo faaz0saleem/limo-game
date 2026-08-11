@@ -22,7 +22,14 @@ export class HUD {
       driftMult: document.getElementById('drift-mult'),
       driftWord: document.getElementById('drift-word'),
       toast: document.getElementById('toast'),
+      objective: document.getElementById('objective'),
+      objTag: document.getElementById('obj-tag'),
+      objName: document.getElementById('obj-name'),
+      objDist: document.getElementById('obj-dist'),
+      offArrow: document.getElementById('offscreen-arrow'),
+      clock: document.getElementById('clock'),
     };
+    this._ndc = null;
 
     this.dial = document.getElementById('dial');
     this.dialCtx = this.dial.getContext('2d');
@@ -31,7 +38,7 @@ export class HUD {
 
     this._dpr = Math.min(window.devicePixelRatio, 2);
     this._sizeCanvas(this.dial, 320);
-    this._sizeCanvas(this.minimap, 220);
+    this._sizeCanvas(this.minimap, 300);
 
     this._needle = 0;
     this._toastTimer = 0;
@@ -283,7 +290,7 @@ export class HUD {
     c.clearRect(0, 0, S, S);
 
     const R = S / 2;
-    const view = 190;                 // metres across the minimap
+    const view = 300;                 // metres across the minimap
     const scale = S / view;
 
     c.save();
@@ -383,11 +390,63 @@ export class HUD {
     c.stroke();
   }
 
+  /* ---------------------------------------------------- objective banner */
+
+  /**
+   * The banner says what to do; the edge arrow says where. Between them the
+   * player should never have to wonder where they are supposed to be going.
+   */
+  setObjective({ state, passenger, routeDistance }) {
+    const pickup = state === 'seeking';
+    this.el.objTag.textContent = pickup ? 'PICK UP' : 'DROP OFF';
+    this.el.objective.classList.toggle('is-drop', !pickup);
+    this.el.objName.textContent = passenger || '—';
+    this.el.objDist.textContent = routeDistance >= 1000
+      ? `${(routeDistance / 1000).toFixed(1)} km`
+      : `${Math.round(routeDistance)} m`;
+  }
+
+  /** Pin an arrow to the screen edge whenever the target is out of frame. */
+  updateOffscreenArrow(camera, target) {
+    if (!target || !camera) { this.el.offArrow.classList.add('hidden'); return; }
+
+    const v = (this._ndc ??= target.clone());
+    v.copy(target);
+    v.y = 1.5;
+    v.project(camera);
+
+    const behind = v.z > 1;
+    const onScreen = !behind && Math.abs(v.x) < 0.92 && Math.abs(v.y) < 0.92;
+    if (onScreen) { this.el.offArrow.classList.add('hidden'); return; }
+
+    let x = v.x, y = v.y;
+    if (behind) { x = -x; y = -1; }        // flip: it is somewhere behind us
+
+    // Push the direction out to the edge of a safe rectangle.
+    const m = Math.max(Math.abs(x), Math.abs(y)) || 1;
+    x /= m; y /= m;
+
+    const pad = 46;
+    const w = window.innerWidth, h = window.innerHeight;
+    const px = (x * 0.5 + 0.5) * (w - pad * 2) + pad;
+    const py = (-y * 0.5 + 0.5) * (h - pad * 2) + pad;
+
+    const a = this.el.offArrow;
+    a.classList.remove('hidden');
+    a.style.left = `${px}px`;
+    a.style.top = `${py}px`;
+    a.firstElementChild.style.transform = `rotate(${Math.atan2(-y, x) * 57.2958}deg)`;
+  }
+
   /* --------------------------------------------------------------- frame */
 
-  update(dt, vehicle, objective, traffic) {
+  update(dt, vehicle, objective, traffic, extra = {}) {
     this.drawDial(vehicle, dt);
     this.drawMinimap(vehicle, objective, traffic);
+
+    if (extra.state) this.setObjective(extra);
+    this.updateOffscreenArrow(extra.camera, objective);
+    if (extra.clock && this.el.clock) this.el.clock.textContent = extra.clock;
 
     if (this._toastTimer > 0) {
       this._toastTimer -= dt;
@@ -398,6 +457,6 @@ export class HUD {
   resize() {
     this._dpr = Math.min(window.devicePixelRatio, 2);
     this._sizeCanvas(this.dial, 320);
-    this._sizeCanvas(this.minimap, 220);
+    this._sizeCanvas(this.minimap, 300);
   }
 }

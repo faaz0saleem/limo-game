@@ -183,7 +183,9 @@ export function facadeMaps(variant) {
     const base = canvas2d(W, H);
     const glow = canvas2d(W, H);
 
-    const clad = 18 + Math.floor(rand() * 16);
+    // Daylight has to land on something. Near-black cladding looked right at
+            // night but made every tower read as unlit at noon.
+    const clad = 48 + Math.floor(rand() * 34);
     base.ctx.fillStyle = `rgb(${clad},${clad + 3},${clad + 8})`;
     base.ctx.fillRect(0, 0, W, H);
     glow.ctx.fillStyle = '#000';
@@ -206,14 +208,19 @@ export function facadeMaps(variant) {
         const lit = rand() < litRate;
 
         if (!lit) {
-          base.ctx.fillStyle = 'rgba(10,14,24,.95)';
+          base.ctx.fillStyle = 'rgba(20,25,38,.95)';
           base.ctx.fillRect(x, y, winW, winH);
           continue;
         }
 
         const [tr, tg, tb] = WINDOW_TINTS[Math.floor(rand() * WINDOW_TINTS.length)];
         const bright = 0.45 + rand() * 0.55;
-        base.ctx.fillStyle = `rgb(${tr * bright | 0},${tg * bright | 0},${tb * bright | 0})`;
+
+        // The albedo keeps every window as dark glass — baking the lit colour
+        // in here is what made the towers look lit up at midday. Only the
+        // emissive map knows which ones are on, so daylight washes them out
+        // and night lights them.
+        base.ctx.fillStyle = 'rgba(26,32,46,.95)';
         base.ctx.fillRect(x, y, winW, winH);
 
         glow.ctx.fillStyle = `rgb(${tr * bright | 0},${tg * bright | 0},${tb * bright | 0})`;

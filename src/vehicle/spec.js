@@ -4,13 +4,13 @@
  * unit-tested) without a renderer, a DOM, or a GPU. */
 
 export const LIMO = {
-  length: 8.6,
-  width: 2.06,
-  wheelBase: 5.6,
-  trackWidth: 1.72,
-  wheelRadius: 0.44,
-  frontAxle: 2.8,
-  rearAxle: -2.8,
+  length: 9.6,
+  width: 2.30,
+  wheelBase: 6.4,
+  trackWidth: 1.98,
+  wheelRadius: 0.50,
+  frontAxle: 3.2,
+  rearAxle: -3.2,
 };
 
 export const PAINT_JOBS = {

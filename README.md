@@ -46,10 +46,24 @@ for them. The beacon turns gold and a meter starts running — deliver them
 before it expires. Payment scales with the passenger's tip rate and how much
 time you had left.
 
+Chevrons painted on the tarmac route you street by street — not a straight line
+through the buildings — and a floating arrow over the roof points at the next
+turn. An arrow pins itself to the screen edge whenever the target is out of
+frame.
+
 Drifting banks style points: the multiplier climbs the longer you hold a slide,
 and points convert to cash when the drift ends cleanly. Crash and you lose the
 drift you were building. The central plaza has a painted ring in it, which is
 there for exactly one reason.
+
+Everything you earn banks into a **garage fund** that survives between shifts.
+Four cars, each a different handling brief — the Bordeaux Slider trades grip for
+a rear end that steps out on command; the Pearl Phantom is quick everywhere.
+
+The city runs a **day/night cycle**: twenty minutes of daylight, twenty of
+night, with dawn and dusk in between. Office windows switch off in the morning,
+street lights and headlights come on at dusk, and the sky, fog, key light and
+exposure all move together.
 
 ---
 
@@ -149,9 +163,27 @@ through a saturating lateral-force curve (a cheap stand-in for Pacejka). That
 one detail is what makes the car behave like a car: break the rears loose and
 the fronts still bite, so **countersteering actually catches the slide**.
 
-The handbrake and full throttle both collapse rear grip — that's the whole drift
-mechanic. Yaw inertia is set high, because a limousine should feel lazy going in
-and lazy coming back.
+Three things make the drift feel deliberate rather than random:
+
+- **Weight transfer.** Braking loads the front axle and unloads the rear, so
+  trailing the brake into a corner rotates the car; throttle does the reverse.
+- **A tyre curve that plateaus.** The peak-sharpness term is below 2, so grip
+  eases off past the limit instead of collapsing — a big slide is something you
+  can sit in and hold.
+- **Extra yaw damping once sideways.** Without it the model is technically
+  correct and completely unplayable, because every slide becomes a spin.
+
+The handbrake ramps rather than switching, so the rear breaks away over a few
+frames and hooks back up smoothly. Per-car `handling` multipliers (grip, power,
+brake, drift, mass) scale the whole model — that's what the garage sells.
+
+### A note on sign conventions
+
+The model is left-positive throughout: positive lateral velocity, positive yaw
+and positive steer all mean "left", ISO style. Facing +Z with +Y up in a
+right-handed frame, the driver's right is −X, so `Vehicle.left` is the +X
+vector. Naming that vector `right` is exactly what once made the controls come
+out mirrored; the player's steering input is flipped once, on the way in.
 
 Physics runs on a fixed 120 Hz timestep independent of the render rate.
 

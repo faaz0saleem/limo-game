@@ -13,10 +13,10 @@ import { rngKit, clamp } from '../util.js';
  */
 
 export const GRID = 7;
-export const PITCH = 82;
-export const ROAD_W = 20;
+export const PITCH = 94;
+export const ROAD_W = 32;
 export const BLOCK = PITCH - ROAD_W;      // 62
-export const HALF_CITY = (GRID / 2) * PITCH + ROAD_W / 2;   // 297
+export const HALF_CITY = (GRID / 2) * PITCH + ROAD_W / 2;   // 345
 
 const FACADE_VARIANTS = 6;
 const NEON_VARIANTS = 6;
@@ -119,12 +119,12 @@ export class City {
     const len = HALF_CITY * 2;
     for (let i = 0; i <= GRID; i++) {
       const c = roadLine(i);
-      const g1 = new THREE.PlaneGeometry(2.4, len);
+      const g1 = new THREE.PlaneGeometry(3.0, len);
       const uv1 = g1.attributes.uv;
       for (let k = 0; k < uv1.count; k++) uv1.setY(k, uv1.getY(k) * (len / 26));
       strips.push(transformed(g1, { pos: new THREE.Vector3(c, 0.015, 0), rotX: -Math.PI / 2 }));
 
-      const g2 = new THREE.PlaneGeometry(2.4, len);
+      const g2 = new THREE.PlaneGeometry(3.0, len);
       const uv2 = g2.attributes.uv;
       for (let k = 0; k < uv2.count; k++) uv2.setY(k, uv2.getY(k) * (len / 26));
       strips.push(transformed(g2, {
@@ -149,6 +149,7 @@ export class City {
     });
 
     const facadeMats = [];
+    this.facadeMaterials = facadeMats;   // the day/night cycle dims these
     const facadeGeos = [];
     for (let v = 0; v < FACADE_VARIANTS; v++) {
       const m = facadeMaps(v);
@@ -433,6 +434,7 @@ export class City {
     }
 
     mergeInto(this.group, poles, metal);
+    this.lampHeadMat = lampMat;
     mergeInto(this.group, heads, lampMat, { cast: false });
   }
 
@@ -490,6 +492,16 @@ export class City {
 
   /* -------------------------------------------------------------- runtime */
 
+  /** 0 = midnight, 1 = noon. Street lighting switches off in daylight. */
+  setDaylight(d) {
+    this._daylight = d;
+    if (this.lampHeadMat) {
+      // The emissive lamp housings should stop glowing too, or they read as
+      // little white squares stuck to the poles in broad daylight.
+      this.lampHeadMat.color.setScalar(1 - d * 0.92);
+    }
+  }
+
   update(dt, playerPos, elapsed) {
     // Re-seat the light pool on whichever lamps are closest to the car.
     if (this.lightPool.length) {
@@ -504,7 +516,7 @@ export class City {
         if (i < near.length) {
           l.position.copy(near[i].p);
           l.visible = true;
-          l.intensity = 500;
+          l.intensity = 500 * (1 - (this._daylight ?? 0));
         } else {
           l.visible = false;
         }

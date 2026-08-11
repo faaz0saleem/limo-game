@@ -67,7 +67,9 @@ function makeMaterials(job) {
 }
 
 function box(w, h, d, r, mat, x = 0, y = 0, z = 0) {
-  const seg = r > 0 ? 3 : 1;
+  // More segments on the big panels: the rounded edge is most of what makes
+  // the car read as coachwork rather than a crate.
+  const seg = r > 0.12 ? 5 : r > 0 ? 3 : 1;
   const geo = r > 0
     ? new RoundedBoxGeometry(w, h, d, seg, r)
     : new THREE.BoxGeometry(w, h, d);
@@ -139,31 +141,31 @@ export function createLimo(jobName = 'midnight') {
   const W = LIMO.width;
 
   /* ------------------------------------------------------------- body shell */
-  chassis.add(box(W, 0.80, LIMO.length, 0.20, M.paint, 0, 0.72, 0));
+  chassis.add(box(W, 0.86, LIMO.length, 0.34, M.paint, 0, 0.76, 0));
 
   // Bonnet, cabin and boot as separate stacked volumes.
-  chassis.add(box(W - 0.10, 0.34, 2.30, 0.13, M.paint, 0, 1.16, 3.05));
-  const cabin = box(W - 0.14, 0.66, 5.10, 0.18, M.paint, 0, 1.36, -0.35);
+  chassis.add(box(W - 0.10, 0.38, 2.55, 0.19, M.paint, 0, 1.22, 3.45));
+  const cabin = box(W - 0.14, 0.72, 5.70, 0.30, M.paint, 0, 1.44, -0.40);
   chassis.add(cabin);
-  chassis.add(box(W - 0.10, 0.30, 1.55, 0.12, M.paint, 0, 1.14, -3.55));
+  chassis.add(box(W - 0.10, 0.34, 1.75, 0.18, M.paint, 0, 1.20, -3.95));
 
   // Roof panel, very slightly inset — catches a crisp specular line.
-  chassis.add(box(W - 0.30, 0.06, 4.70, 0.03, M.paint, 0, 1.70, -0.35));
+  chassis.add(box(W - 0.36, 0.08, 5.20, 0.04, M.paint, 0, 1.80, -0.40));
 
   /* ------------------------------------------------------------------ glass */
   const windshield = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.30, 1.05), M.glass);
-  windshield.position.set(0, 1.44, 2.16);
+  windshield.position.set(0, 1.52, 2.42);
   windshield.rotation.x = -Math.PI * 0.16;
   chassis.add(windshield);
 
   const rearGlass = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.32, 0.86), M.glass);
-  rearGlass.position.set(0, 1.44, -2.86);
+  rearGlass.position.set(0, 1.52, -3.20);
   rearGlass.rotation.x = Math.PI * 0.18;
   chassis.add(rearGlass);
 
   for (const side of [-1, 1]) {
-    const sideGlass = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 0.56), M.glass);
-    sideGlass.position.set(side * (W / 2 - 0.06), 1.42, -0.35);
+    const sideGlass = new THREE.Mesh(new THREE.PlaneGeometry(5.1, 0.62), M.glass);
+    sideGlass.position.set(side * (W / 2 - 0.06), 1.50, -0.40);
     sideGlass.rotation.y = side * Math.PI / 2;
     chassis.add(sideGlass);
   }
@@ -171,8 +173,8 @@ export function createLimo(jobName = 'midnight') {
   /* ------------------------------------------------------------ chrome trim */
   // Full-length waist line — the detail that says "limousine".
   for (const side of [-1, 1]) {
-    chassis.add(box(0.05, 0.07, LIMO.length - 0.6, 0.02, M.chrome, side * (W / 2 - 0.01), 1.02, 0));
-    chassis.add(box(0.07, 0.16, LIMO.length - 1.2, 0.03, M.chrome, side * (W / 2 - 0.02), 0.42, 0));
+    chassis.add(box(0.05, 0.07, LIMO.length - 0.6, 0.02, M.chrome, side * (W / 2 - 0.01), 1.08, 0));
+    chassis.add(box(0.07, 0.18, LIMO.length - 1.2, 0.03, M.chrome, side * (W / 2 - 0.02), 0.44, 0));
   }
 
   // Bumpers.
@@ -188,7 +190,7 @@ export function createLimo(jobName = 'midnight') {
 
   // Hood ornament.
   const ornament = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 10), M.chrome);
-  ornament.position.set(0, 1.40, 3.95);
+  ornament.position.set(0, 1.48, 4.42);
   chassis.add(ornament);
 
   /* ----------------------------------------------------------------- lights */

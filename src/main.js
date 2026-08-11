@@ -16,6 +16,9 @@ import { portal } from './portal.js';
 import { save } from './game/save.js';
 import { Music } from './audio/music.js';
 import { Menus } from './ui/menus.js';
+import { Navigator } from './render/navigation.js';
+import { DayNight } from './world/daynight.js';
+import { carById } from './game/garage.js';
 import { clamp, damp, lerp } from './util.js';
 
 /* ---------------------------------------------------------------- boot */
@@ -54,7 +57,10 @@ class Game {
     scene.background = background;
     scene.backgroundIntensity = 0.55;
     buildFog(scene, { near: 70, far: this.stage.settings.drawDistance, color: 0x0b1020 });
-    scene.add(makeSkyDome(2200));
+    this.sky = makeSkyDome(2400);
+    scene.add(this.sky);
+    // Twenty minutes of daylight, then twenty of night.
+    this.dayNight = new DayNight({ cycleMinutes: 40, startAt: 0.02 });
 
     progress(28, 'pouring concrete');
     await nextFrame();
@@ -63,6 +69,7 @@ class Game {
     progress(42, 'raising towers');
     await nextFrame();
     this.city = new City(scene, { envMap, settings: this.stage.settings });
+    this.facadeMaterials = this.city.facadeMaterials ?? [];
 
     progress(62, 'wiring the neon');
     await nextFrame();
@@ -73,13 +80,15 @@ class Game {
 
     progress(74, 'polishing the chrome');
     await nextFrame();
-    this.limo = createLimo('midnight');
+    this.car = carById(save.load().car);
+    this.limo = createLimo(this.car.paint);
     this.limo.setEnvironment(envMap);
     scene.add(this.limo.root);
 
     // Start on the street just south of the central plaza, pointed down it.
     const start = this.city.snapToRoad(new THREE.Vector3(0, 0, -60));
-    this.vehicle = new Vehicle(start, this.city.alignedHeading(start, Math.PI / 2));
+    this.vehicle = new Vehicle(start, this.city.alignedHeading(start, Math.PI / 2),
+      this.car.handling);
 
     progress(85, 'laying rubber');
     await nextFrame();
@@ -87,6 +96,7 @@ class Game {
     this.skids = new SkidMarks(scene, q.skidSegments);
     this.particles = new ParticleField(scene, q.particles);
 
+    this.nav = new Navigator(scene);
     this.chase = new ChaseCamera(this.stage.camera);
     this.chase.reset(this.vehicle);
 
@@ -141,7 +151,8 @@ class Game {
     this.moon = moon;
 
     // Sky/ground bounce, so shadowed faces aren't black.
-    scene.add(new THREE.HemisphereLight(0x3a4a80, 0x1a1018, 1.1));
+    this.ambient = new THREE.HemisphereLight(0x3a4a80, 0x1a1018, 1.1);
+    scene.add(this.ambient);
 
     // A warm fill from the street below, faked with a second directional.
     const bounce = new THREE.DirectionalLight(0xff9a5c, 0.45);
@@ -169,6 +180,19 @@ class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.running && !this.paused) this.togglePause();
     });
+  }
+
+  /**
+   * Swap the driven car. The handling numbers can be applied live, but the
+   * paint has to go on the existing materials — rebuilding the model mid-frame
+   * would drop the wheels and lights the rest of the code holds references to.
+   */
+  equipCar(id) {
+    this.car = carById(id);
+    this.vehicle.handling = { ...this.vehicle.handling, ...this.car.handling };
+    const job = PAINT_JOBS[this.car.paint] ?? PAINT_JOBS.midnight;
+    this.limo.materials.paint.color.set(job.paint);
+    this.hud?.toast?.(`${this.car.name} ready`);
   }
 
   cyclePaint() {
@@ -278,6 +302,7 @@ class Game {
     this.skids.clear();
     this.particles.clear();
     this.play.reset(this.vehicle.position);
+    this.nav.update(0, this.vehicle.position, this.play.objective, this.vehicle.heading);
     this._roll = 0;
     this._pitch = 0;
     this.elapsed = 0;
@@ -317,12 +342,12 @@ class Game {
   _resolveCollisions() {
     const v = this.vehicle;
     const fwd = v.forward.clone();
-    const radius = 1.32;
+    const radius = 1.46;
     let worst = 0;
     let normal = null;
     let contact = null;
 
-    for (const offset of [3.3, 0, -3.3]) {
+    for (const offset of [3.7, 0, -3.7]) {
       const x = v.position.x + fwd.x * offset;
       const z = v.position.z + fwd.z * offset;
 
@@ -371,7 +396,7 @@ class Game {
   _emitEffects(dt) {
     const v = this.vehicle;
     const fwd = v.forward.clone();
-    const right = v.right.clone();
+    const left = v.left.clone();
     const speed = Math.abs(v.speed);
     const slip = v.wheelSlip;
 
@@ -384,8 +409,8 @@ class Game {
 
     for (const side of [-1, 1]) {
       const key = `r${side}`;
-      const wx = v.position.x + fwd.x * LIMO.rearAxle + right.x * side * (LIMO.trackWidth / 2);
-      const wz = v.position.z + fwd.z * LIMO.rearAxle + right.z * side * (LIMO.trackWidth / 2);
+      const wx = v.position.x + fwd.x * LIMO.rearAxle + left.x * side * (LIMO.trackWidth / 2);
+      const wz = v.position.z + fwd.z * LIMO.rearAxle + left.z * side * (LIMO.trackWidth / 2);
 
       if (smoking) {
         this.skids.stamp(key, wx, wz, dirX, dirZ, 0.42, clamp((slip - 0.2) * 1.5, 0.15, 1));
@@ -400,8 +425,8 @@ class Game {
       while (this.smokeAcc >= 1) {
         this.smokeAcc -= 1;
         const side = Math.random() < 0.5 ? -1 : 1;
-        const wx = v.position.x + fwd.x * LIMO.rearAxle + right.x * side * (LIMO.trackWidth / 2);
-        const wz = v.position.z + fwd.z * LIMO.rearAxle + right.z * side * (LIMO.trackWidth / 2);
+        const wx = v.position.x + fwd.x * LIMO.rearAxle + left.x * side * (LIMO.trackWidth / 2);
+        const wz = v.position.z + fwd.z * LIMO.rearAxle + left.z * side * (LIMO.trackWidth / 2);
         const shade = lerp(0.62, 0.82, Math.random());
         this.particles.spawn({
           x: wx + (Math.random() - 0.5) * 0.4,
@@ -424,8 +449,8 @@ class Game {
     while (this.exhaustAcc >= 1) {
       this.exhaustAcc -= 1;
       const side = Math.random() < 0.5 ? -1 : 1;
-      const ex = v.position.x + fwd.x * (-LIMO.length / 2) + right.x * side * 0.62;
-      const ez = v.position.z + fwd.z * (-LIMO.length / 2) + right.z * side * 0.62;
+      const ex = v.position.x + fwd.x * (-LIMO.length / 2) + left.x * side * 0.62;
+      const ez = v.position.z + fwd.z * (-LIMO.length / 2) + left.z * side * 0.62;
       const hot = v.boosting;
       this.particles.spawn({
         x: ex, y: 0.45, z: ez,
@@ -447,7 +472,6 @@ class Game {
     this.limo.root.position.set(v.position.x, 0, v.position.z);
     this.limo.root.rotation.y = v.heading;
     this.limo.updateWheels(v.steer, v.speed, dt);
-    this.limo.setLamps({ braking: v.braking, reversing: v.reversing });
 
     // Weight transfer: roll into the corner, dive under braking, squat on power.
     const lateralG = clamp(-v.yawRate * v.speed * 0.02, -1, 1);
@@ -495,6 +519,22 @@ class Game {
     this._syncCar(raw);
     this._emitEffects(raw);
 
+    // Time of day drives the sky, the fog, the key light, the office windows
+    // and the car's headlights from a single number.
+    this.dayNight.update(raw);
+    this.dayNight.apply({
+      scene: this.scene, sky: this.sky, key: this.moon, ambient: this.ambient,
+      renderer: this.stage.renderer, facadeMaterials: this.facadeMaterials,
+      city: this.city,
+    });
+    this.limo.setLamps({
+      braking: v.braking, reversing: v.reversing,
+      headlights: this.dayNight.isNight,
+    });
+
+    this.nav.update(raw, v.position, this.play.objective, v.heading);
+    this.nav.setColor(this.play.state === 'seeking' ? 0x38e6ff : 0xffcb5c);
+
     this.traffic.update(raw, v, this.elapsed);
     this.city.update(raw, v.position, this.elapsed);
     this.particles.update(raw);
@@ -516,7 +556,13 @@ class Game {
     }, raw);
 
     this.music.setIntensity(v.speed01);
-    this.hud.update(raw, v, this.play.objective, this.traffic);
+    this.hud.update(raw, v, this.play.objective, this.traffic, {
+      camera: this.stage.camera,
+      clock: this.dayNight.clock,
+      state: this.play.state,
+      passenger: this.play.passenger?.name ?? '',
+      routeDistance: this.nav.routeDistance(),
+    });
     this.stage.update(raw, { speed01: v.speed01, damage: v.impact });
     this.stage.render();
 
@@ -596,6 +642,11 @@ async function boot() {
       game.applyAudioSettings();
     },
     getRecords: () => save.load(),
+    onBuy: (id) => {
+      const car = carById(id);
+      if (save.buy(car)) game.equipCar(car.id);
+    },
+    onEquip: (id) => { if (save.equip(id)) game.equipCar(id); },
     onResetRecords: () => {
       save.reset();
       menus.syncSettings(save.settings, stage.quality);

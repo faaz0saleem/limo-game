@@ -33,20 +33,33 @@ const CFG = {
   counterSteerAssist: 0.55, // nudges the wheel into the slide
 
   // Grip (peak lateral acceleration per axle)
-  gripFront: 15.5,
-  gripRear: 16.4,
-  handbrakeGrip: 3.4,
-  throttleSlipLoss: 4.6,    // rear grip lost under full power
-  stiffness: 7.0,           // slope of the tyre curve before saturation
+  gripFront: 16.5,
+  gripRear: 17.0,
+  handbrakeGrip: 4.2,
+  handbrakeRamp: 9.0,       // how fast the rear lets go / hooks back up
+  throttleSlipLoss: 4.2,    // rear grip lost under full power
+  stiffness: 6.2,           // slope of the tyre curve before it saturates
+  peakSharpness: 1.75,      // <2 keeps grip past the peak: slides stay held
+  weightTransfer: 0.30,     // brake loads the front, throttle loads the rear
 
   // Chassis
   yawInertia: 3.15,         // the limo is long: lazy in, lazy out
   yawDamping: 2.4,
+  driftDamping: 2.2,        // extra yaw damping deep in a slide (anti-spin)
   mass: 1,
 };
 
+/**
+ * Per-car handling, scaled onto CFG. The shop sells these.
+ * 1.0 everywhere is the starting limo.
+ */
+export const DEFAULT_HANDLING = {
+  grip: 1, power: 1, brake: 1, drift: 1, mass: 1,
+};
+
 export class Vehicle {
-  constructor(startPos = new THREE.Vector3(), startHeading = 0) {
+  constructor(startPos = new THREE.Vector3(), startHeading = 0, handling = DEFAULT_HANDLING) {
+    this.handling = { ...DEFAULT_HANDLING, ...handling };
     this.position = startPos.clone();
     this.heading = startHeading;          // yaw, radians, 0 = +Z
     this.velocity = new THREE.Vector3();  // world space, y unused
@@ -64,7 +77,8 @@ export class Vehicle {
     this.airborne = false;
 
     this._forward = new THREE.Vector3();
-    this._right = new THREE.Vector3();
+    this._left = new THREE.Vector3();
+    this._handbrake = 0;              // smoothed, so the rear doesn't snap
     this._lastImpact = 0;
     this.impact = 0;                      // 0..1, decays after a collision
   }
@@ -73,8 +87,18 @@ export class Vehicle {
     return this._forward.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
-  get right() {
-    return this._right.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
+  /**
+   * The car's LEFT-hand direction.
+   *
+   * Facing +Z with +Y up in a right-handed frame, the driver's right is -X,
+   * so this vector — (+X at heading 0) — is the left side. The whole model is
+   * built in this ISO-style frame where positive lateral velocity, positive
+   * yaw and positive steer all mean "left"; `update()` negates the player's
+   * steering input once, on the way in. Calling this `right` is what made the
+   * controls come out mirrored.
+   */
+  get left() {
+    return this._left.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
   }
 
   /** Absolute speed in km/h, for the dial. */
@@ -104,18 +128,22 @@ export class Vehicle {
    */
   update(input, dt) {
     const fwd = this.forward.clone();
-    const right = this.right.clone();
+    const left = this.left.clone();
 
     // --- velocity in the body frame -------------------------------------
     let vLong = this.velocity.dot(fwd);
-    let vLat = this.velocity.dot(right);
+    let vLat = this.velocity.dot(left);
     const speedAbs = Math.hypot(vLong, vLat);
 
     // --- steering --------------------------------------------------------
+    // Input is +1 for "right" because that is what a player expects; the model
+    // below is left-positive, so flip it exactly once, here.
+    const steerCmd = -input.steer;
+
     const speedFactor = clamp(speedAbs / CFG.topSpeed, 0, 1);
     const maxSteer = lerp(CFG.maxSteer, CFG.highSpeedSteer, Math.pow(speedFactor, 0.65));
 
-    let steerTarget = input.steer * maxSteer;
+    let steerTarget = steerCmd * maxSteer;
 
     // Countersteer assist: when the rear is out, bias the wheel into the
     // slide so the car is catchable on a keyboard.
@@ -126,13 +154,14 @@ export class Vehicle {
       steerTarget = clamp(steerTarget, -maxSteer * 1.25, maxSteer * 1.25);
     }
 
-    const rate = Math.abs(input.steer) > 0.01 ? CFG.steerRate : CFG.steerReturn;
+    const rate = Math.abs(steerCmd) > 0.01 ? CFG.steerRate : CFG.steerReturn;
     this.steer = damp(this.steer, steerTarget, rate, dt);
 
     // --- drive / brake ---------------------------------------------------
+    const H = this.handling;
     const boosting = input.boost && this.boostCharge > 0.02 && input.throttle > 0.1;
-    const topSpeed = boosting ? CFG.boostTopSpeed : CFG.topSpeed;
-    const power = boosting ? CFG.boostPower : CFG.enginePower;
+    const topSpeed = (boosting ? CFG.boostTopSpeed : CFG.topSpeed) * lerp(1, H.power, 0.5);
+    const power = (boosting ? CFG.boostPower : CFG.enginePower) * H.power;
 
     this.boostCharge = clamp(
       this.boostCharge + (boosting ? -dt * 0.34 : dt * 0.13),
@@ -149,7 +178,7 @@ export class Vehicle {
     let braking = false;
     if (input.brake > 0.01) {
       if (vLong > 0.6) {
-        drive -= CFG.brakePower * input.brake;   // brakes
+        drive -= CFG.brakePower * H.brake * input.brake;   // brakes
         braking = true;
       } else {
         // Rolling backwards out of a corner.
@@ -173,19 +202,38 @@ export class Vehicle {
     const slipFront = Math.atan2(vLat + this.yawRate * a, vRef) - this.steer * sign(vLong || 1);
     const slipRear = Math.atan2(vLat - this.yawRate * b, vRef);
 
-    // Rear grip collapses under the handbrake or full throttle: that's the
-    // whole drift mechanic in two lines.
-    let gripRear = CFG.gripRear;
-    if (input.handbrake) gripRear = CFG.handbrakeGrip;
-    else if (input.throttle > 0.5) {
-      gripRear -= CFG.throttleSlipLoss * input.throttle * clamp(1 - speedFactor * 0.6, 0.25, 1);
+    // Weight transfer. Braking pitches weight onto the nose (more front grip,
+    // less rear — this is what makes trail-braking rotate the car); throttle
+    // does the opposite. It's the difference between a car that turns and a
+    // car that understeers everywhere.
+    const load = clamp(input.brake - input.throttle, -1, 1) * CFG.weightTransfer;
+    const gripScale = H.grip;
+
+    // The handbrake ramps rather than switching, so the rear breaks away over
+    // a few frames and hooks back up smoothly instead of snapping.
+    this._handbrake = damp(this._handbrake, input.handbrake ? 1 : 0, CFG.handbrakeRamp, dt);
+
+    let gripFront = CFG.gripFront * gripScale * (1 + load);
+    let gripRear = CFG.gripRear * gripScale * (1 - load);
+
+    if (input.throttle > 0.5) {
+      gripRear -= CFG.throttleSlipLoss * input.throttle
+        * clamp(1 - speedFactor * 0.6, 0.25, 1) * gripScale;
     }
     if (boosting) gripRear -= 1.8;
+    // Blend toward handbrake grip; H.drift makes a drift-spec car looser.
+    gripRear = lerp(gripRear, CFG.handbrakeGrip / H.drift, this._handbrake);
+    gripRear = Math.max(gripRear, 1.2);
 
+    /*
+     * Saturating tyre curve. `peakSharpness` below 2 means the force does not
+     * collapse once the tyre is past its peak — it eases off. That plateau is
+     * what makes a big slide holdable instead of an instant spin.
+     */
     const tyreForce = (slip, grip) =>
-      -grip * Math.sin(1.9 * Math.atan(CFG.stiffness * slip));
+      -grip * Math.sin(CFG.peakSharpness * Math.atan(CFG.stiffness * slip));
 
-    const fyFront = tyreForce(slipFront, CFG.gripFront);
+    const fyFront = tyreForce(slipFront, gripFront);
     const fyRear = tyreForce(slipRear, gripRear);
 
     // --- integrate -------------------------------------------------------
@@ -196,7 +244,12 @@ export class Vehicle {
     vLat += aLat * dt;
 
     const yawTorque = a * fyFront * Math.cos(this.steer) - b * fyRear;
-    const yawAcc = yawTorque / CFG.yawInertia - this.yawRate * CFG.yawDamping;
+    // Extra damping once the car is properly sideways. Without it the model is
+    // technically correct and completely unplayable: every slide becomes a
+    // spin. With it, a big angle is something you can sit in and hold.
+    const sideways = clamp((Math.abs(Math.atan2(vLat, Math.max(Math.abs(vLong), 1))) - 0.25) / 0.6, 0, 1);
+    const damping = CFG.yawDamping + sideways * CFG.driftDamping;
+    const yawAcc = yawTorque / (CFG.yawInertia * H.mass) - this.yawRate * damping;
     this.yawRate += yawAcc * dt;
 
     // Stop the model buzzing when the car is essentially stationary.
@@ -211,8 +264,8 @@ export class Vehicle {
 
     // Rebuild world velocity from the (updated) body frame.
     const nf = this.forward.clone();
-    const nr = this.right.clone();
-    this.velocity.copy(nf.multiplyScalar(vLong).add(nr.multiplyScalar(vLat)));
+    const nl = this.left.clone();
+    this.velocity.copy(nf.multiplyScalar(vLong).add(nl.multiplyScalar(vLat)));
     this.position.addScaledVector(this.velocity, dt);
 
     // --- telemetry for the rest of the game ------------------------------

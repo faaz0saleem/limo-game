@@ -1,4 +1,5 @@
 import { formatMoney } from '../util.js';
+import { CARS, statBars } from '../game/garage.js';
 
 /* Every screen outside the HUD: loading, title, how-to, settings, pause and
  * the end-of-shift summary. Owns the DOM so main.js only deals in callbacks. */
@@ -12,10 +13,14 @@ const TIPS = [
   'Press C to change camera. The hood view is the fastest-feeling one.',
   'Delivering with time to spare pays a bonus on top of the fare.',
   'Traffic brakes for you, but it still hurts. Weave, do not bulldoze.',
+  'The arrows on the road follow the streets, not the crow. Trust them.',
+  'Everything you bank goes to the garage fund. A better limo grips harder.',
+  'The city runs on a real clock — twenty minutes of daylight, then twenty of night.',
+  'Braking as you turn in rotates the car. Trail the brake into a corner.',
 ];
 
 const PANELS = ['panel-loading', 'panel-start', 'panel-howto', 'panel-settings',
-  'panel-pause', 'panel-summary'];
+  'panel-pause', 'panel-summary', 'panel-garage'];
 
 export class Menus {
   constructor(handlers = {}) {
@@ -50,6 +55,8 @@ export class Menus {
     on('btn-settings', () => this.show('panel-settings'));
     on('btn-pause-settings', () => this.show('panel-settings', 'panel-pause'));
     on('btn-howto', () => this.show('panel-howto'));
+    on('btn-garage', () => this.showGarage());
+    on('btn-summary-garage', () => this.showGarage('panel-summary'));
     on('btn-pause', () => this.h.onPause?.());
     on('btn-fullscreen', () => this.toggleFullscreen());
     on('btn-reset', () => {
@@ -147,6 +154,8 @@ export class Menus {
     document.getElementById('rec-drift').textContent =
       Math.round(records.bestDrift).toLocaleString('en-US');
     document.getElementById('rec-fares').textContent = records.bestFares;
+    const w = document.getElementById('rec-wallet');
+    if (w) w.textContent = formatMoney(records.wallet);
   }
 
   syncSettings(s, resolvedQuality) {
@@ -192,6 +201,64 @@ export class Menus {
        </div>`).join('');
 
     this.show('panel-summary');
+  }
+
+  /* ---------------------------------------------------------------- garage */
+
+  showGarage(returnTo = 'panel-start') {
+    this.renderGarage();
+    this.show('panel-garage', returnTo);
+  }
+
+  renderGarage() {
+    const save = this.h.getRecords?.();
+    if (!save) return;
+    document.getElementById('garage-wallet').textContent = formatMoney(save.wallet);
+
+    document.getElementById('garage-list').innerHTML = CARS.map((car) => {
+      const owned = save.owned.includes(car.id);
+      const equipped = save.car === car.id;
+      const afford = save.wallet >= car.price;
+
+      const bars = statBars(car).map(([k, v]) => `
+        <div class="bar-row"><span class="bar-k">${k}</span>
+          <span class="bar"><i style="width:${(v * 100).toFixed(0)}%"></i></span></div>`).join('');
+
+      const action = equipped
+        ? '<span class="car-tag">IN USE</span>'
+        : owned
+          ? `<button class="btn-ghost car-btn" data-equip="${car.id}">DRIVE THIS</button>`
+          : `<button class="btn-ghost car-btn${afford ? '' : ' is-locked'}"
+               data-buy="${car.id}" ${afford ? '' : 'disabled'}>
+               ${afford ? 'BUY ' + formatMoney(car.price) : formatMoney(car.price)}
+             </button>`;
+
+      return `<div class="car-card${equipped ? ' is-equipped' : ''}">
+          <div class="car-swatch" style="background:${this._swatch(car.paint)}"></div>
+          <div class="car-body">
+            <div class="car-name">${car.name}</div>
+            <div class="car-blurb">${car.blurb}</div>
+            ${bars}
+          </div>
+          <div class="car-action">${action}</div>
+        </div>`;
+    }).join('');
+
+    for (const b of document.querySelectorAll('#garage-list [data-buy]')) {
+      b.addEventListener('click', () => { this.h.onBuy?.(b.dataset.buy); this.renderGarage(); });
+    }
+    for (const b of document.querySelectorAll('#garage-list [data-equip]')) {
+      b.addEventListener('click', () => { this.h.onEquip?.(b.dataset.equip); this.renderGarage(); });
+    }
+  }
+
+  _swatch(paint) {
+    return {
+      midnight: 'linear-gradient(150deg,#2a3040,#0b0d14)',
+      champagne: 'linear-gradient(150deg,#f0dcae,#c9a86a)',
+      bordeaux: 'linear-gradient(150deg,#8d2038,#4a0d1c)',
+      pearl: 'linear-gradient(150deg,#ffffff,#c9c6d0)',
+    }[paint] ?? '#333';
   }
 
   /* ------------------------------------------------------------ fullscreen */

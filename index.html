@@ -49,6 +49,16 @@
     <canvas id="minimap" width="220" height="220"></canvas>
   </div>
 
+  <div class="objective" id="objective">
+    <span class="obj-tag" id="obj-tag">PICK UP</span>
+    <span class="obj-name" id="obj-name">—</span>
+    <span class="obj-dist" id="obj-dist">—</span>
+  </div>
+
+  <div class="offscreen-arrow hidden" id="offscreen-arrow"><span>➤</span></div>
+
+  <div class="clock" id="clock">00:00</div>
+
   <div class="drift-banner hidden" id="drift-banner">
     <div class="drift-score" id="drift-score">0</div>
     <div class="drift-mult" id="drift-mult">x1.0</div>
@@ -83,17 +93,19 @@
   <!-- Title -------------------------------------------------------------- -->
   <div class="panel hidden" id="panel-start">
     <div class="logo">MIDNIGHT<span>LIMO</span></div>
-    <p class="tag">Stretch eight metres of chrome through a neon city.<br>Pick up fares. Drift the corners. Don't spill the champagne.</p>
+    <p class="tag">Stretch ten metres of chrome through a living city.<br>Pick up fares, drift the corners, and buy a faster limo.</p>
 
     <div class="record-row" id="record-row">
       <div class="record"><span class="record-k">BEST SHIFT</span><span class="record-v" id="rec-cash">$0</span></div>
       <div class="record"><span class="record-k">BEST DRIFT</span><span class="record-v" id="rec-drift">0</span></div>
       <div class="record"><span class="record-k">MOST FARES</span><span class="record-v" id="rec-fares">0</span></div>
+      <div class="record is-wallet"><span class="record-k">GARAGE FUND</span><span class="record-v" id="rec-wallet">$0</span></div>
     </div>
 
     <button class="btn" id="btn-start">START ENGINE</button>
 
     <div class="btn-row">
+      <button class="btn-ghost" id="btn-garage">GARAGE</button>
       <button class="btn-ghost" id="btn-settings">SETTINGS</button>
       <button class="btn-ghost" id="btn-howto">HOW TO PLAY</button>
       <button class="btn-ghost" id="btn-fullscreen">FULLSCREEN</button>
@@ -104,11 +116,12 @@
   <div class="panel hidden" id="panel-howto">
     <div class="logo small">HOW TO PLAY</div>
     <ol class="howto">
-      <li>Follow the <b class="c-cyan">cyan beam</b> to your passenger.</li>
-      <li>Pull up and <b>slow down</b> to let them in.</li>
-      <li>Race to the <b class="c-gold">gold beam</b> before the meter runs out.</li>
-      <li>Hold <b>Space</b> through a corner to drift — the longer you hold the slide, the bigger the multiplier, and it all converts to cash.</li>
-      <li>Crash and you lose the drift you were building.</li>
+      <li>Follow the <b>arrows painted on the road</b> — they route you street by street. The floating arrow over your roof points at the next turn.</li>
+      <li>Pull up at the <b class="c-cyan">cyan beam</b> and <b>slow down</b> to let your passenger in.</li>
+      <li>Race to the <b class="c-gold">gold beam</b> before the meter runs out. Arrive early and the tip goes up.</li>
+      <li>Hold <b>Space</b> through a corner to drift. The longer you hold the slide, the bigger the multiplier — and it all converts to cash.</li>
+      <li>Crash and you lose the drift you were building. Land it first.</li>
+      <li>Everything you earn banks into the <b class="c-gold">garage fund</b>. Spend it on a quicker limo with more grip.</li>
     </ol>
     <div class="keys" id="keys-list">
       <div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>drive</span></div>
@@ -118,6 +131,7 @@
       <div class="key-group"><kbd>R</kbd><span>recover</span></div>
       <div class="key-group"><kbd>P</kbd><span>paint</span></div>
       <div class="key-group"><kbd>Esc</kbd><span>pause</span></div>
+      <div class="key-group"><kbd>M</kbd><span>mute</span></div>
     </div>
     <button class="btn" data-back="panel-start">BACK</button>
   </div>
@@ -161,6 +175,14 @@
     <div class="hint"><button class="link-btn" id="btn-reset">reset records</button></div>
   </div>
 
+  <!-- Garage ------------------------------------------------------------- -->
+  <div class="panel panel-wide hidden" id="panel-garage">
+    <div class="logo small">GARAGE</div>
+    <div class="wallet-line">GARAGE FUND <b id="garage-wallet">$0</b></div>
+    <div class="garage-list" id="garage-list"></div>
+    <button class="btn" data-back="panel-start">BACK</button>
+  </div>
+
   <!-- Pause -------------------------------------------------------------- -->
   <div class="panel hidden" id="panel-pause">
     <div class="logo small">PAUSED</div>
@@ -181,6 +203,7 @@
     <div class="sum-grid" id="sum-grid"></div>
     <button class="btn" id="btn-again">DRIVE AGAIN</button>
     <div class="btn-row">
+      <button class="btn-ghost" id="btn-summary-garage">GARAGE</button>
       <button class="btn-ghost" data-back="panel-start">MAIN MENU</button>
     </div>
   </div>
