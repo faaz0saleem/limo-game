@@ -116,6 +116,8 @@ class Game {
         if (type === 'fare-paid') {
           this.audio.chime(true);
           if (data?.payout > 700) portal.happyTime(0.8);
+          // Show banner ad when dropping off a passenger
+          this.showBannerAd();
           // Only ever break between fares — never while the player is driving.
           if (portal.shouldShowInterstitial()) this._adBreak();
         } else if (type === 'picked-up') this.audio.chime(true);
@@ -243,6 +245,8 @@ class Game {
     portal.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
+    this._gameplayStartTime = Date.now();
+    this._first30sAdShown = false;
     if (first) this._loop();
   }
 
@@ -275,6 +279,8 @@ class Game {
         hits: this.pedestrians.hits,
       });
     } else {
+      // Show banner ad when unpausing the game
+      this.showBannerAd();
       menus.hide();
       this.audio.resume();
       portal.gameplayStart();
@@ -342,6 +348,17 @@ class Game {
         portal.gameplayStart();
       }
       this.clock.getDelta();        // don't integrate the ad's duration
+    }
+  }
+
+  /** Show a GameMonetize banner ad at an appropriate time during gameplay. */
+  showBannerAd() {
+    if (typeof sdk !== 'undefined' && typeof sdk.showBanner === 'function') {
+      try {
+        sdk.showBanner();
+      } catch (err) {
+        console.warn('[GameMonetize] Banner ad failed', err);
+      }
     }
   }
 
@@ -491,6 +508,12 @@ class Game {
   }
 
   _step(dt) {
+    // Show first banner ad after 30 seconds of gameplay
+    if (!this._first30sAdShown && this._gameplayStartTime && Date.now() - this._gameplayStartTime >= 30000) {
+      this._first30sAdShown = true;
+      this.showBannerAd();
+    }
+
     this.input.update(dt);
 
     const cmd = {
@@ -622,6 +645,7 @@ async function boot() {
 
   const game = new Game(stage);
   window.__limo = game;              // handy for debugging from the console
+  window.gameInstance = game;        // exposed for GameMonetize SDK
 
   /* ------------------------------------------------------- menu callbacks */
   menus.h = {
@@ -657,7 +681,11 @@ async function boot() {
     getRecords: () => save.load(),
     onBuy: (id) => {
       const car = carById(id);
-      if (save.buy(car)) game.equipCar(car.id);
+      if (save.buy(car)) {
+        game.equipCar(car.id);
+        // Show banner ad when player purchases a car
+        game.showBannerAd();
+      }
     },
     onEquip: (id) => { if (save.equip(id)) game.equipCar(id); },
     onResetRecords: () => {
