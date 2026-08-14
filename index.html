@@ -24,12 +24,16 @@
   window.SDK_OPTIONS = {
     gameId: "x3p3ubo7dt5lf17cabk76rz3yfvqx257",
     onEvent: function (event) {
+      console.info('[GameMonetize] SDK event:', event.name);
       switch (event.name) {
         case "SDK_GAME_PAUSE":
           // Pause game and mute audio during advertisement
           if (window.gameInstance) {
             window.gameInstance.setAdMuted(true);
             window.gameInstance.setPaused(true);
+            console.info('[GameMonetize] Game paused and muted');
+          } else {
+            console.warn('[GameMonetize] Game instance not available for pause');
           }
           break;
         case "SDK_GAME_START":
@@ -39,18 +43,24 @@
             if (window.gameInstance.paused) {
               window.gameInstance.setPaused(false);
             }
+            console.info('[GameMonetize] Game resumed and unmuted');
+          } else {
+            console.warn('[GameMonetize] Game instance not available for resume');
           }
           break;
         case "SDK_READY":
           // SDK is ready - logging for debugging
           console.info('[GameMonetize] SDK is ready');
           break;
+        default:
+          console.debug('[GameMonetize] Unknown event:', event.name);
       }
     }
   };
   (function (a, b, c) {
     var d = a.getElementsByTagName(b)[0];
-    a.getElementById(c) || (a = a.createElement(b), a.id = c, a.src = "https://api.gamemonetize.com/sdk.js", d.parentNode.insertBefore(a, d))
+    a.getElementById(c) || (a = a.createElement(b), a.id = c, a.src = "https://api.gamemonetize.com/sdk.js", d.parentNode.insertBefore(a, d));
+    console.info('[GameMonetize] SDK script loading...');
   })(document, "script", "gamemonetize-sdk");
 </script>
 

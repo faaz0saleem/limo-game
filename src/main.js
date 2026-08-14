@@ -353,12 +353,15 @@ class Game {
 
   /** Show a GameMonetize banner ad at an appropriate time during gameplay. */
   showBannerAd() {
-    if (typeof sdk !== 'undefined' && typeof sdk.showBanner === 'function') {
+    if (typeof sdk !== 'undefined' && sdk.showBanner !== 'undefined') {
       try {
         sdk.showBanner();
+        console.info('[GameMonetize] Banner ad triggered');
       } catch (err) {
-        console.warn('[GameMonetize] Banner ad failed', err);
+        console.warn('[GameMonetize] Banner ad error:', err);
       }
+    } else {
+      console.debug('[GameMonetize] SDK not ready or showBanner unavailable');
     }
   }
 
