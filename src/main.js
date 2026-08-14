@@ -245,8 +245,6 @@ class Game {
     portal.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
-    this._gameplayStartTime = Date.now();
-    this._first30sAdShown = false;
     if (first) this._loop();
   }
 
@@ -511,12 +509,6 @@ class Game {
   }
 
   _step(dt) {
-    // Show first banner ad after 30 seconds of gameplay
-    if (!this._first30sAdShown && this._gameplayStartTime && Date.now() - this._gameplayStartTime >= 30000) {
-      this._first30sAdShown = true;
-      this.showBannerAd();
-    }
-
     this.input.update(dt);
 
     const cmd = {
