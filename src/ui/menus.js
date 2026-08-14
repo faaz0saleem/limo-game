@@ -56,6 +56,7 @@ export class Menus {
     on('btn-end-shift', () => this.h.onEndShift?.());
     on('btn-settings', () => this.show('panel-settings'));
     on('btn-pause-settings', () => this.show('panel-settings', 'panel-pause'));
+    on('btn-pause-garage', () => this.showGarage('panel-pause'));
     on('btn-howto', () => this.show('panel-howto'));
     on('btn-garage', () => this.showGarage());
     on('btn-summary-garage', () => this.showGarage('panel-summary'));
@@ -179,10 +180,13 @@ export class Menus {
   /* ----------------------------------------------------------------- pause */
 
   showPause(stats) {
-    document.getElementById('pause-stats').innerHTML =
-      `<span>${formatMoney(stats.cash)} earned</span>` +
-      `<span>·</span><span><b>${stats.fares}</b> fares</span>` +
-      `<span>·</span><span>best drift <b>${Math.round(stats.bestDrift).toLocaleString('en-US')}</b></span>`;
+    const bits = [
+      `<span>${formatMoney(stats.cash)} earned</span>`,
+      `<span>·</span><span><b>${stats.fares}</b> fares</span>`,
+      `<span>·</span><span>best drift <b>${Math.round(stats.bestDrift).toLocaleString('en-US')}</b></span>`,
+    ];
+    if (stats.hits) bits.push(`<span>·</span><span class="warn"><b>${stats.hits}</b> hit</span>`);
+    document.getElementById('pause-stats').innerHTML = bits.join('');
     this.show('panel-pause');
   }
 
@@ -196,6 +200,7 @@ export class Menus {
       ['BEST DRIFT', Math.round(shift.bestDrift).toLocaleString('en-US'), records.drift],
       ['DISTANCE', `${(shift.distance / 1000).toFixed(2)} km`, false],
       ['TOP SPEED', `${Math.round(shift.topSpeed)} km/h`, records.speed],
+      ['PEOPLE HIT', shift.hits ?? 0, false],
     ];
     document.getElementById('sum-grid').innerHTML = cells.map(([k, v, rec]) =>
       `<div class="sum-cell${rec ? ' is-record' : ''}">

@@ -28,6 +28,8 @@ export class HUD {
       objDist: document.getElementById('obj-dist'),
       offArrow: document.getElementById('offscreen-arrow'),
       clock: document.getElementById('clock'),
+      hits: document.getElementById('stat-hits'),
+      hitsWrap: document.getElementById('stat-hits-wrap'),
     };
     this._ndc = null;
 
@@ -447,6 +449,12 @@ export class HUD {
     if (extra.state) this.setObjective(extra);
     this.updateOffscreenArrow(extra.camera, objective);
     if (extra.clock && this.el.clock) this.el.clock.textContent = extra.clock;
+
+    // The incident counter only appears once there is something to count.
+    if (this.el.hitsWrap) {
+      this.el.hitsWrap.classList.toggle('hidden', !extra.hits);
+      if (extra.hits) this.el.hits.textContent = extra.hits;
+    }
 
     if (this._toastTimer > 0) {
       this._toastTimer -= dt;

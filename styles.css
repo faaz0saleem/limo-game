@@ -361,3 +361,8 @@ kbd{
 @media (max-height:460px){
   .icon-pause{top:6px;left:auto;right:140px;width:36px;height:30px}
 }
+
+/* Incident counter: present, but never celebrated. */
+.stat.is-warn{border-color:rgba(255,47,109,.45);background:rgba(255,47,109,.10)}
+.stat.is-warn .stat-v{color:#ff6f95}
+.pause-stats .warn b{color:#ff6f95}

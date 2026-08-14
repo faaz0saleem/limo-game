@@ -5,6 +5,7 @@ import { makeSkyDome } from './render/post.js';
 import { SkidMarks, ParticleField, burstSparks } from './render/effects.js';
 import { City, HALF_CITY } from './world/city.js';
 import { Traffic } from './world/traffic.js';
+import { Pedestrians } from './world/pedestrians.js';
 import { createLimo, LIMO, PAINT_JOBS } from './vehicle/limo.js';
 import { Vehicle } from './vehicle/physics.js';
 import { ChaseCamera } from './game/chaseCamera.js';
@@ -75,6 +76,11 @@ class Game {
     await nextFrame();
     this.traffic = new Traffic(scene, {
       count: this.stage.quality === 'low' ? 14 : this.stage.quality === 'ultra' ? 38 : 26,
+      envMap,
+    });
+
+    this.pedestrians = new Pedestrians(scene, {
+      count: this.stage.quality === 'low' ? 45 : this.stage.quality === 'ultra' ? 130 : 90,
       envMap,
     });
 
@@ -266,6 +272,7 @@ class Game {
         cash: this.play.cash,
         fares: this.play.fares,
         bestDrift: this.play.bestDrift,
+        hits: this.pedestrians.hits,
       });
     } else {
       menus.hide();
@@ -288,6 +295,7 @@ class Game {
       bestDrift: this.play.bestDrift,
       distance: this.play.stats.distance,
       topSpeed: this.play.stats.topSpeed,
+      hits: this.pedestrians.hits,
     };
     const records = save.recordShift(shift);
     this._shiftEnded = true;
@@ -301,6 +309,7 @@ class Game {
     this.chase.reset(this.vehicle);
     this.skids.clear();
     this.particles.clear();
+    this.pedestrians.reset();
     this.play.reset(this.vehicle.position);
     this.nav.update(0, this.vehicle.position, this.play.objective, this.vehicle.heading);
     this._roll = 0;
@@ -535,6 +544,9 @@ class Game {
     this.nav.update(raw, v.position, this.play.objective, v.heading);
     this.nav.setColor(this.play.state === 'seeking' ? 0x38e6ff : 0xffcb5c);
 
+    const struck = this.pedestrians.update(raw, v);
+    if (struck > 0) this.play.registerPedestrianHit(struck, v);
+
     this.traffic.update(raw, v, this.elapsed);
     this.city.update(raw, v.position, this.elapsed);
     this.particles.update(raw);
@@ -562,6 +574,7 @@ class Game {
       state: this.play.state,
       passenger: this.play.passenger?.name ?? '',
       routeDistance: this.nav.routeDistance(),
+      hits: this.pedestrians.hits,
     });
     this.stage.update(raw, { speed01: v.speed01, damage: v.impact });
     this.stage.render();

@@ -65,7 +65,7 @@ export class Gameplay {
     this.driftActive = false;
     this._driftCooldown = 0;
     this._driftTimer = 0;
-    this.stats = { distance: 0, topSpeed: 0, crashes: 0, longestDrift: 0 };
+    this.stats = { distance: 0, topSpeed: 0, crashes: 0, longestDrift: 0, pedestriansHit: 0 };
     this.hud.hideDrift();
     this.nextFare(playerPos);
   }
@@ -168,6 +168,20 @@ export class Gameplay {
     this.driftMult = 1;
     this._driftTimer = 0;
     this.driftActive = false;
+  }
+
+  /**
+   * The player clipped someone on the pavement. It costs them: a fine, and the
+   * drift they were building. A chauffeur who drives like this does not get
+   * tipped.
+   */
+  registerPedestrianHit(count, vehicle) {
+    const fine = 150 * count;
+    this.cash = Math.max(0, this.cash - fine);
+    this.stats.pedestriansHit = (this.stats.pedestriansHit ?? 0) + count;
+    this.breakDrift();
+    this.hud.toast(`PEDESTRIAN HIT  −$${fine}`, 'bad');
+    this.onEvent('pedestrian-hit', { count, fine });
   }
 
   /** A crash cancels the drift you were building. Land it or lose it. */

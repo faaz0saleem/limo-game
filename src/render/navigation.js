@@ -27,6 +27,13 @@ function onNorthSouth(x, z) {
  * corner, placed so both legs run down a street centre-line.
  */
 export function routeAlongStreets(from, to) {
+  // Snap the start onto its street centre-line. Routing from wherever the car
+  // happens to be sitting made the first leg run at an angle to the road.
+  const startNS = onNorthSouth(from.x, from.z);
+  from = startNS
+    ? new THREE.Vector3(nearestRoadLine(from.x), 0, from.z)
+    : new THREE.Vector3(from.x, 0, nearestRoadLine(from.z));
+
   const fromNS = onNorthSouth(from.x, from.z);
   const toNS = onNorthSouth(to.x, to.z);
 
@@ -64,7 +71,17 @@ export class Navigator {
     shape.closePath();
 
     const geo = new THREE.ShapeGeometry(shape);
-    geo.rotateX(-Math.PI / 2);            // lie flat on the road
+    /*
+     * Lie the chevron flat, then spin it 180 degrees.
+     *
+     * rotateX(-PI/2) maps the shape's +Y (its tip) onto -Z while leaving the
+     * face normal pointing up. Since the instances are yawed with
+     * atan2(ux, uz) — a +Z-forward convention — the tip came out pointing back
+     * down the route. The extra rotateY puts the tip on +Z without flipping
+     * the normal, which rotateX(+PI/2) would have done.
+     */
+    geo.rotateX(-Math.PI / 2);
+    geo.rotateY(Math.PI);
 
     this.chevMat = new THREE.MeshBasicMaterial({
       color: 0xffcb5c,

@@ -244,11 +244,11 @@ export class City {
           new THREE.BoxGeometry(BLOCK, 0.26, BLOCK),
           { pos: new THREE.Vector3(cx, 0.13, cz) },
         ));
-        this.colliders.push({
-          minX: cx - BLOCK / 2, maxX: cx + BLOCK / 2,
-          minZ: cz - BLOCK / 2, maxZ: cz + BLOCK / 2,
-          tall: !isPark,
-        });
+        /*
+         * Deliberately NO block-wide collider any more. Fencing off the whole
+         * lot kept the car on the tarmac; now the pavement is drivable and
+         * only the buildings themselves stop you (see _pushBuilding).
+         */
 
         if (isPark) {
           this._buildPark(cx, cz, props);
@@ -335,6 +335,12 @@ export class City {
       pos: new THREE.Vector3(x, h + 0.25, z),
     }));
 
+    // Each tower is its own obstacle, so there is room to drive between them.
+    this.colliders.push({
+      minX: x - w / 2, maxX: x + w / 2,
+      minZ: z - d / 2, maxZ: z + d / 2, tall: true,
+    });
+
     const rng = this.rng;
     const clutter = rng.int(1, 3);
     for (let i = 0; i < clutter; i++) {
@@ -394,6 +400,10 @@ export class City {
 
   _buildPark(cx, cz, props) {
     const rng = this.rng;
+    this.colliders.push({
+      minX: cx - BLOCK / 2 + 6, maxX: cx + BLOCK / 2 - 6,
+      minZ: cz - BLOCK / 2 + 6, maxZ: cz + BLOCK / 2 - 6, tall: false,
+    });
     for (let i = 0; i < 26; i++) {
       const x = cx + rng.range(-BLOCK / 2 + 4, BLOCK / 2 - 4);
       const z = cz + rng.range(-BLOCK / 2 + 4, BLOCK / 2 - 4);
@@ -511,14 +521,22 @@ export class City {
         const cx = blockCentre(ix), cz = blockCentre(iz);
         const half = BLOCK / 2;
 
-        // --- shopfronts along each street-facing edge of the block
+        /*
+         * Shopfronts, set back at the building line so the pavement in front
+         * of them stays clear to drive and walk on. Only some edges get one,
+         * and only some bays within an edge — a shop on every bay of every
+         * block was what made the streets look stamped out.
+         */
         for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-          const units = rng.int(3, 5);
+          if (!rng.chance(0.6)) continue;
+          const inset = 5.5;
+          const units = rng.int(2, 3);
           for (let u = 0; u < units; u++) {
+            if (!rng.chance(0.75)) continue;
             const t = (u + 0.5) / units - 0.5;
-            const along = t * (BLOCK - 12);
-            const ex = cx + nx * half + (nx === 0 ? along : 0);
-            const ez = cz + nz * half + (nz === 0 ? along : 0);
+            const along = t * (BLOCK - 20);
+            const ex = cx + nx * (half - inset) + (nx === 0 ? along : 0);
+            const ez = cz + nz * (half - inset) + (nz === 0 ? along : 0);
             const rotY = Math.atan2(nx, nz);
 
             // Awning over the door.
@@ -534,8 +552,8 @@ export class City {
               pos: new THREE.Vector3(ex + nx * 0.2, 1.75, ez + nz * 0.2), rotY,
             }));
 
-            // A bench or a bin on the pavement in front.
-            if (rng.chance(0.5)) {
+            // A bench or a bin on the pavement in front — sparingly.
+            if (rng.chance(0.25)) {
               const bx = ex + nx * 3.2, bz = ez + nz * 3.2;
               dark.push(transformed(new THREE.BoxGeometry(2.0, 0.16, 0.6), {
                 pos: new THREE.Vector3(bx, 0.85, bz), rotY,
@@ -545,7 +563,7 @@ export class City {
                   pos: new THREE.Vector3(bx + Math.cos(rotY) * s2, 0.5, bz - Math.sin(rotY) * s2), rotY,
                 }));
               }
-            } else if (rng.chance(0.5)) {
+            } else if (rng.chance(0.3)) {
               dark.push(transformed(new THREE.CylinderGeometry(0.42, 0.36, 1.1, 10), {
                 pos: new THREE.Vector3(ex + nx * 3.4, 0.81, ez + nz * 3.4),
               }));
@@ -554,11 +572,14 @@ export class City {
         }
 
         // --- a hot-dog cart on one corner of the block
-        if (rng.chance(0.55)) {
+        if (rng.chance(0.3)) {
           const sx = rng.chance(0.5) ? 1 : -1;
           const sz = rng.chance(0.5) ? 1 : -1;
-          const px = cx + sx * (half - 4.5);
-          const pz = cz + sz * (half - 4.5);
+          const px = cx + sx * (half - 3.0);
+          const pz = cz + sz * (half - 3.0);
+          this.colliders.push({
+            minX: px - 1.6, maxX: px + 1.6, minZ: pz - 1.1, maxZ: pz + 1.1, tall: false,
+          });
 
           dark.push(transformed(new THREE.BoxGeometry(2.6, 1.1, 1.5), {
             pos: new THREE.Vector3(px, 0.95, pz),
