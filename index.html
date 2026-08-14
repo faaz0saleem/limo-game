@@ -23,17 +23,15 @@
 <script type="text/javascript">
   window.SDK_OPTIONS = {
     gameId: "x3p3ubo7dt5lf17cabk76rz3yfvqx257",
-    onEvent: function (event) {
-      console.info('[GameMonetize] SDK event:', event.name);
-      switch (event.name) {
+    onEvent: function (a) {
+      console.info('[GameMonetize] SDK event:', a.name);
+      switch (a.name) {
         case "SDK_GAME_PAUSE":
           // Pause game and mute audio during advertisement
           if (window.gameInstance) {
             window.gameInstance.setAdMuted(true);
             window.gameInstance.setPaused(true);
             console.info('[GameMonetize] Game paused and muted');
-          } else {
-            console.warn('[GameMonetize] Game instance not available for pause');
           }
           break;
         case "SDK_GAME_START":
@@ -44,16 +42,16 @@
               window.gameInstance.setPaused(false);
             }
             console.info('[GameMonetize] Game resumed and unmuted');
-          } else {
-            console.warn('[GameMonetize] Game instance not available for resume');
           }
           break;
         case "SDK_READY":
-          // SDK is ready - logging for debugging
+          // SDK is ready
           console.info('[GameMonetize] SDK is ready');
           break;
-        default:
-          console.debug('[GameMonetize] Unknown event:', event.name);
+        case "SDK_ERROR":
+          // SDK error occurred
+          console.error('[GameMonetize] SDK error:', a);
+          break;
       }
     }
   };

@@ -120,8 +120,11 @@ class Game {
           this.showBannerAd();
           // Only ever break between fares — never while the player is driving.
           if (portal.shouldShowInterstitial()) this._adBreak();
-        } else if (type === 'picked-up') this.audio.chime(true);
-        else if (type === 'fare-lost') this.audio.chime(false);
+        } else if (type === 'picked-up') {
+          this.audio.chime(true);
+          // Show banner ad when picking up a new passenger
+          this.showBannerAd();
+        } else if (type === 'fare-lost') this.audio.chime(false);
         else if (type === 'drift-banked') {
           this.audio.chime(true);
           if (data?.total > 3000) portal.happyTime(0.6);
@@ -245,6 +248,8 @@ class Game {
     portal.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
+    // Show banner ad when starting the game
+    this.showBannerAd();
     if (first) this._loop();
   }
 
@@ -292,6 +297,8 @@ class Game {
     this.paused = true;
     this.audio.suspend();
     portal.gameplayStop();
+    // Show banner ad when shift ends
+    this.showBannerAd();
 
     const shift = {
       cash: this.play.cash,
@@ -354,12 +361,9 @@ class Game {
     if (typeof sdk !== 'undefined' && sdk.showBanner !== 'undefined') {
       try {
         sdk.showBanner();
-        console.info('[GameMonetize] Banner ad triggered');
       } catch (err) {
-        console.warn('[GameMonetize] Banner ad error:', err);
+        console.warn('[GameMonetize] showBanner error:', err);
       }
-    } else {
-      console.debug('[GameMonetize] SDK not ready or showBanner unavailable');
     }
   }
 
@@ -675,10 +679,12 @@ async function boot() {
     },
     getRecords: () => save.load(),
     onBuy: (id) => {
+      // Show banner ad when opening purchase dialog
+      game.showBannerAd();
       const car = carById(id);
       if (save.buy(car)) {
         game.equipCar(car.id);
-        // Show banner ad when player purchases a car
+        // Show another banner ad after successful purchase
         game.showBannerAd();
       }
     },
