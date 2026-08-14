@@ -19,6 +19,25 @@
  * ever depend on an ad having played.
  */
 
+/**
+ * Ad pacing.
+ *
+ * Both portals reject builds that advertise too aggressively: no ad before the
+ * game is playable, none during gameplay, and CrazyGames requires at least
+ * three minutes between interstitials. `AD_COOLDOWN_MS` is the one number to
+ * change if that policy ever moves — dropping it below 180000 risks the game
+ * failing review, which costs far more than the extra impressions earn.
+ */
+export const AD_COOLDOWN_MS = 180000;
+
+/**
+ * How long after the player actually starts driving the first interstitial may
+ * fire. Deliberately short so the first break lands early; it is measured from
+ * gameplay start, never from page load, because an ad before the game is
+ * playable is an automatic rejection on both portals.
+ */
+export const FIRST_AD_DELAY_MS = 30000;
+
 const SDK_URLS = {
   crazygames: 'https://sdk.crazygames.com/crazygames-sdk-v3.js',
   poki: 'https://game-cdn.poki.com/scripts/v2/poki-sdk.js',
@@ -51,12 +70,15 @@ class Portal {
     this._gameplayActive = false;
     this._muteHandlers = [];
     this._sinceAd = 0;
+    this._lastAdAt = 0;
+    this.gameId = typeof window !== 'undefined' ? window.GAME_ID ?? null : null;
     this._memory = new Map();
   }
 
   /* ------------------------------------------------------------- lifecycle */
 
   async init() {
+    this._bootAt = Date.now();
     const override = new URLSearchParams(location.search).get('portal');
     const wanted = (override || window.GAME_PORTAL || 'none').toLowerCase();
 
@@ -73,7 +95,11 @@ class Portal {
 
     try {
       if (wanted === 'crazygames' && window.CrazyGames?.SDK) {
-        await window.CrazyGames.SDK.init();
+        // v3 reads the game ID from the page it is embedded on, but pass it
+        // when the SDK accepts one so local/dev builds report correctly too.
+        await (this.gameId && window.CrazyGames.SDK.init.length > 0
+          ? window.CrazyGames.SDK.init({ gameId: this.gameId })
+          : window.CrazyGames.SDK.init());
         this.sdk = window.CrazyGames.SDK;
         this.name = 'crazygames';
       } else if (wanted === 'poki' && window.PokiSDK) {
@@ -141,6 +167,7 @@ class Portal {
   gameplayStart() {
     if (this._gameplayActive) return;
     this._gameplayActive = true;
+    if (!this._firstPlayAt) this._firstPlayAt = Date.now();
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.gameplayStart();
       else this.sdk.gameplayStart();
@@ -200,16 +227,26 @@ class Portal {
   }
 
   /**
-   * Paced by completed fares, and never in the player's opening minutes —
-   * both portals penalise games that interrupt too early or too often.
+   * Called on every completed fare. Shows an ad as often as the portal allows
+   * — which is once per AD_COOLDOWN_MS, not once per fare. The cooldown is the
+   * binding constraint, not the fare count.
    */
   shouldShowInterstitial() {
     this._sinceAd += 1;
-    if (this._sinceAd >= 3) {
+    const now = Date.now();
+
+    // First break comes 30s into actual driving, not 30s into the page load.
+    if (!this._lastAdAt) {
+      if (!this._firstPlayAt || now - this._firstPlayAt < FIRST_AD_DELAY_MS) return false;
+      this._lastAdAt = now;
       this._sinceAd = 0;
       return true;
     }
-    return false;
+
+    if (now - this._lastAdAt < AD_COOLDOWN_MS) return false;
+    this._lastAdAt = now;
+    this._sinceAd = 0;
+    return true;
   }
 
   onMuteChange(fn) {

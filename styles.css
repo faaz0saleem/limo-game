@@ -295,8 +295,8 @@ kbd{
 .car-card{display:flex;gap:14px;align-items:center;text-align:left;padding:12px 14px;
   border-radius:13px;background:rgba(10,14,26,.66);border:1px solid var(--edge)}
 .car-card.is-equipped{border-color:rgba(255,203,92,.55);background:rgba(255,203,92,.07)}
-.car-swatch{width:52px;height:34px;border-radius:7px;flex:0 0 auto;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 4px 12px rgba(0,0,0,.5)}
+.car-shot{width:132px;height:47px;flex:0 0 auto;border-radius:8px;object-fit:contain;
+  background:linear-gradient(160deg,rgba(120,160,255,.10),rgba(0,0,0,.30))}
 .car-body{flex:1;min-width:0}
 .car-name{font-size:.94rem;font-weight:700;letter-spacing:.03em}
 .car-blurb{font-size:.7rem;color:var(--dim);margin:2px 0 7px}
@@ -347,7 +347,7 @@ kbd{
   .obj-tag{font-size:.5rem;padding:3px 7px}
   .clock{display:none}
   .car-card{gap:9px;padding:9px 10px}
-  .car-swatch{width:38px;height:26px}
+  .car-shot{width:92px;height:33px}
   .car-name{font-size:.82rem}
   .car-blurb{display:none}
   .garage-list{max-height:52vh}

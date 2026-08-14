@@ -1,5 +1,7 @@
 import { formatMoney } from '../util.js';
 import { CARS, statBars } from '../game/garage.js';
+import { limoProfile } from '../render/textures.js';
+import { PAINT_JOBS } from '../vehicle/spec.js';
 
 /* Every screen outside the HUD: loading, title, how-to, settings, pause and
  * the end-of-shift summary. Owns the DOM so main.js only deals in callbacks. */
@@ -234,7 +236,7 @@ export class Menus {
              </button>`;
 
       return `<div class="car-card${equipped ? ' is-equipped' : ''}">
-          <div class="car-swatch" style="background:${this._swatch(car.paint)}"></div>
+          <img class="car-shot" alt="${car.name}" src="${this._portrait(car.paint)}">
           <div class="car-body">
             <div class="car-name">${car.name}</div>
             <div class="car-blurb">${car.blurb}</div>
@@ -252,13 +254,10 @@ export class Menus {
     }
   }
 
-  _swatch(paint) {
-    return {
-      midnight: 'linear-gradient(150deg,#2a3040,#0b0d14)',
-      champagne: 'linear-gradient(150deg,#f0dcae,#c9a86a)',
-      bordeaux: 'linear-gradient(150deg,#8d2038,#4a0d1c)',
-      pearl: 'linear-gradient(150deg,#ffffff,#c9c6d0)',
-    }[paint] ?? '#333';
+  /** Side-on portrait of the car, drawn on a canvas in its own paint. */
+  _portrait(paintName) {
+    const job = PAINT_JOBS[paintName] ?? PAINT_JOBS.midnight;
+    return limoProfile(job.paint, job.accent);
   }
 
   /* ------------------------------------------------------------ fullscreen */

@@ -13,7 +13,11 @@
      Exactly one SDK is loaded, by src/portal.js, at runtime. Shipping two ad
      SDKs in one build fails review on both portals, so change this line
      rather than adding a second script tag. -->
-<script>window.GAME_PORTAL = 'crazygames';</script>
+<script>
+  window.GAME_PORTAL = 'crazygames';
+  // CrazyGames game ID, issued by the portal for this title.
+  window.GAME_ID = 'x3p3ubo7dt5lf17cabk76rz3yfvqx257';
+</script>
 
 <script type="importmap">
 {

@@ -148,13 +148,99 @@ export function asphaltMaps() {
   });
 }
 
+/** A side-on limo portrait for the garage cards. Pure canvas, no render pass. */
+export function limoProfile(paintHex, accentHex) {
+  return memo('profile' + paintHex, () => {
+    const W = 420, H = 150;
+    const { c, ctx } = canvas2d(W, H);
+    const paint = '#' + paintHex.toString(16).padStart(6, '0');
+    const accent = '#' + accentHex.toString(16).padStart(6, '0');
+
+    // Ground shadow.
+    const sh = ctx.createRadialGradient(W / 2, 126, 4, W / 2, 126, 190);
+    sh.addColorStop(0, 'rgba(0,0,0,.55)');
+    sh.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(0, 100, W, 50);
+
+    const body = (y0, y1, x0, x1, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x0 + r, y0);
+      ctx.lineTo(x1 - r, y0);
+      ctx.quadraticCurveTo(x1, y0, x1, y0 + r);
+      ctx.lineTo(x1, y1 - r);
+      ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+      ctx.lineTo(x0 + r, y1);
+      ctx.quadraticCurveTo(x0, y1, x0, y1 - r);
+      ctx.lineTo(x0, y0 + r);
+      ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+      ctx.closePath();
+    };
+
+    // Cabin roof.
+    const g2 = ctx.createLinearGradient(0, 40, 0, 78);
+    g2.addColorStop(0, '#ffffff22');
+    g2.addColorStop(1, paint);
+    ctx.fillStyle = g2;
+    body(44, 80, 96, 300, 16);
+    ctx.fill();
+
+    // Main body, with a highlight along the top edge.
+    const g1 = ctx.createLinearGradient(0, 70, 0, 118);
+    g1.addColorStop(0, '#ffffff30');
+    g1.addColorStop(0.25, paint);
+    g1.addColorStop(1, '#00000090');
+    ctx.fillStyle = g1;
+    body(72, 116, 22, 396, 15);
+    ctx.fill();
+
+    // Glasshouse.
+    ctx.fillStyle = 'rgba(120,180,235,.30)';
+    for (const [x, w] of [[108, 58], [176, 52], [236, 56]]) {
+      body(52, 76, x, x + w, 7);
+      ctx.fill();
+    }
+
+    // Chrome waistline + sills.
+    ctx.fillStyle = '#dfe6f5';
+    ctx.fillRect(26, 92, 366, 3);
+    ctx.fillStyle = '#aab4c8';
+    ctx.fillRect(30, 112, 358, 4);
+
+    // Lights.
+    ctx.fillStyle = '#fff3d0';
+    ctx.fillRect(384, 82, 12, 9);
+    ctx.fillStyle = '#ff2f4d';
+    ctx.fillRect(24, 82, 10, 9);
+
+    // Wheels.
+    for (const wx of [86, 330]) {
+      ctx.fillStyle = '#0a0b0e';
+      ctx.beginPath(); ctx.arc(wx, 116, 24, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c9d2e4';
+      ctx.beginPath(); ctx.arc(wx, 116, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#6d788e';
+      ctx.beginPath(); ctx.arc(wx, 116, 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Accent underglow.
+    const ug = ctx.createLinearGradient(0, 118, 0, 132);
+    ug.addColorStop(0, accent + 'aa');
+    ug.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ug;
+    ctx.fillRect(40, 118, 340, 14);
+
+    return c.toDataURL('image/png');
+  });
+}
+
 /** Painted lane markings, drawn once and tiled down the length of a road. */
 export function laneMarkingTexture() {
   return memo('lane', () => {
     const { c, ctx } = canvas2d(64, 512);
     ctx.clearRect(0, 0, 64, 512);
-    ctx.fillStyle = 'rgba(238,236,214,.85)';
-    for (let y = 20; y < 512; y += 128) ctx.fillRect(26, y, 12, 76);
+    ctx.fillStyle = 'rgba(246,244,226,.95)';
+    for (let y = 16; y < 512; y += 118) ctx.fillRect(25, y, 14, 74);
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;

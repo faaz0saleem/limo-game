@@ -79,6 +79,7 @@ export class City {
     this._buildGround(envMap);
     this._buildBlocks(envMap);
     this._buildStreetFurniture(envMap);
+    this._buildStreetLife(envMap);
     this._buildBoundary();
     this._buildLightPool();
     this._buildSpawnPoints();
@@ -132,6 +133,49 @@ export class City {
       }));
     }
     mergeInto(this.group, strips, laneMat, { cast: false, receive: false, order: 1 });
+
+    /* Solid white edge lines and zebra crossings. Real roads are covered in
+     * paint; a bare strip of asphalt with one dashed line reads as a runway. */
+    const paint = new THREE.MeshBasicMaterial({
+      color: 0xf2efe0, transparent: true, opacity: 0.55, depthWrite: false,
+    });
+    const marks = [];
+    const edge = ROAD_W / 2 - 1.6;
+
+    for (let i = 0; i <= GRID; i++) {
+      const c = roadLine(i);
+      for (const off of [-edge, edge]) {
+        marks.push(transformed(new THREE.PlaneGeometry(0.5, len), {
+          pos: new THREE.Vector3(c + off, 0.016, 0), rotX: -Math.PI / 2,
+        }));
+        marks.push(transformed(new THREE.PlaneGeometry(0.5, len), {
+          pos: new THREE.Vector3(0, 0.016, c + off), rotX: -Math.PI / 2, rotY: Math.PI / 2,
+        }));
+      }
+    }
+
+    // Zebra bands on all four approaches to every junction.
+    const stripeW = 1.5, stripeGap = 2.9, bandLen = 4.4;
+    for (let i = 0; i <= GRID; i++) {
+      for (let j = 0; j <= GRID; j++) {
+        const jx = roadLine(i), jz = roadLine(j);
+        for (const [ax, az] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          const bx = jx + ax * (ROAD_W / 2 - bandLen / 2 - 0.6);
+          const bz = jz + az * (ROAD_W / 2 - bandLen / 2 - 0.6);
+          for (let k = -3; k <= 3; k++) {
+            const sx = bx + (ax !== 0 ? 0 : k * stripeGap);
+            const sz = bz + (az !== 0 ? 0 : k * stripeGap);
+            const w = ax !== 0 ? bandLen : stripeW;
+            const d = ax !== 0 ? stripeW : bandLen;
+            if (Math.abs(sx) > HALF_CITY || Math.abs(sz) > HALF_CITY) continue;
+            marks.push(transformed(new THREE.PlaneGeometry(w, d), {
+              pos: new THREE.Vector3(sx, 0.017, sz), rotX: -Math.PI / 2,
+            }));
+          }
+        }
+      }
+    }
+    mergeInto(this.group, marks, paint, { cast: false, receive: false, order: 1 });
   }
 
   /* -------------------------------------------------------------- blocks */
@@ -438,6 +482,112 @@ export class City {
     mergeInto(this.group, heads, lampMat, { cast: false });
   }
 
+  /**
+   * The stuff that makes a street feel inhabited: shopfronts with awnings and
+   * lit signs at the base of every block, hot-dog carts on the corners, plus
+   * benches and bins along the pavement.
+   *
+   * All of it sits on the raised sidewalk, which is already the block's
+   * collider — so it is scenery the player can see but never drive into.
+   */
+  _buildStreetLife(envMap) {
+    const rng = this.rng;
+    const dark = [];
+    const canvasProps = [];      // fabric awnings + cart canopies
+    const signGeos = [];         // emissive shop signage
+    const midI = (GRID - 1) / 2;
+
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: 0x1c2029, metalness: 0.5, roughness: 0.62, envMap, envMapIntensity: 0.7,
+    });
+    const fabricMat = new THREE.MeshStandardMaterial({
+      color: 0xb4442f, metalness: 0.0, roughness: 0.85, envMap, envMapIntensity: 0.4,
+    });
+    this.signMat = new THREE.MeshBasicMaterial({ color: 0xffcf94 });
+
+    for (let ix = 0; ix < GRID; ix++) {
+      for (let iz = 0; iz < GRID; iz++) {
+        if (ix === midI && iz === midI) continue;          // the plaza
+        const cx = blockCentre(ix), cz = blockCentre(iz);
+        const half = BLOCK / 2;
+
+        // --- shopfronts along each street-facing edge of the block
+        for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          const units = rng.int(3, 5);
+          for (let u = 0; u < units; u++) {
+            const t = (u + 0.5) / units - 0.5;
+            const along = t * (BLOCK - 12);
+            const ex = cx + nx * half + (nx === 0 ? along : 0);
+            const ez = cz + nz * half + (nz === 0 ? along : 0);
+            const rotY = Math.atan2(nx, nz);
+
+            // Awning over the door.
+            canvasProps.push(transformed(new THREE.BoxGeometry(5.4, 0.22, 2.0), {
+              pos: new THREE.Vector3(ex + nx * 1.0, 3.15, ez + nz * 1.0), rotY,
+            }));
+            // Lit fascia sign above it.
+            signGeos.push(transformed(new THREE.BoxGeometry(4.6, 0.85, 0.22), {
+              pos: new THREE.Vector3(ex + nx * 0.35, 4.15, ez + nz * 0.35), rotY,
+            }));
+            // Window frame / doorway.
+            dark.push(transformed(new THREE.BoxGeometry(5.0, 2.9, 0.3), {
+              pos: new THREE.Vector3(ex + nx * 0.2, 1.75, ez + nz * 0.2), rotY,
+            }));
+
+            // A bench or a bin on the pavement in front.
+            if (rng.chance(0.5)) {
+              const bx = ex + nx * 3.2, bz = ez + nz * 3.2;
+              dark.push(transformed(new THREE.BoxGeometry(2.0, 0.16, 0.6), {
+                pos: new THREE.Vector3(bx, 0.85, bz), rotY,
+              }));
+              for (const s2 of [-0.8, 0.8]) {
+                dark.push(transformed(new THREE.BoxGeometry(0.16, 0.72, 0.5), {
+                  pos: new THREE.Vector3(bx + Math.cos(rotY) * s2, 0.5, bz - Math.sin(rotY) * s2), rotY,
+                }));
+              }
+            } else if (rng.chance(0.5)) {
+              dark.push(transformed(new THREE.CylinderGeometry(0.42, 0.36, 1.1, 10), {
+                pos: new THREE.Vector3(ex + nx * 3.4, 0.81, ez + nz * 3.4),
+              }));
+            }
+          }
+        }
+
+        // --- a hot-dog cart on one corner of the block
+        if (rng.chance(0.55)) {
+          const sx = rng.chance(0.5) ? 1 : -1;
+          const sz = rng.chance(0.5) ? 1 : -1;
+          const px = cx + sx * (half - 4.5);
+          const pz = cz + sz * (half - 4.5);
+
+          dark.push(transformed(new THREE.BoxGeometry(2.6, 1.1, 1.5), {
+            pos: new THREE.Vector3(px, 0.95, pz),
+          }));
+          canvasProps.push(transformed(new THREE.BoxGeometry(3.2, 0.16, 2.1), {
+            pos: new THREE.Vector3(px, 2.5, pz),
+          }));
+          for (const [ox, oz] of [[-1.4, -0.9], [1.4, -0.9], [-1.4, 0.9], [1.4, 0.9]]) {
+            dark.push(transformed(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6), {
+              pos: new THREE.Vector3(px + ox, 1.75, pz + oz),
+            }));
+          }
+          signGeos.push(transformed(new THREE.BoxGeometry(1.9, 0.5, 0.14), {
+            pos: new THREE.Vector3(px, 2.95, pz),
+          }));
+          for (const ox of [-0.95, 0.95]) {
+            dark.push(transformed(new THREE.CylinderGeometry(0.3, 0.3, 0.14, 10).rotateZ(Math.PI / 2), {
+              pos: new THREE.Vector3(px + ox, 0.3, pz),
+            }));
+          }
+        }
+      }
+    }
+
+    mergeInto(this.group, dark, darkMat);
+    mergeInto(this.group, canvasProps, fabricMat);
+    mergeInto(this.group, signGeos, this.signMat, { cast: false });
+  }
+
   _buildBoundary() {
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0x0d1017, metalness: 0.3, roughness: 0.8,
@@ -500,6 +650,8 @@ export class City {
       // little white squares stuck to the poles in broad daylight.
       this.lampHeadMat.color.setScalar(1 - d * 0.92);
     }
+    // Shop signs stay readable by day but stop glowing.
+    if (this.signMat) this.signMat.color.setRGB(1 - d * 0.45, 0.81 - d * 0.35, 0.58 - d * 0.25);
   }
 
   update(dt, playerPos, elapsed) {
