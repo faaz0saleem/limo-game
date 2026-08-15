@@ -117,10 +117,10 @@ class Game {
           this.audio.chime(true);
           if (data?.payout > 700) portal.happyTime(0.8);
           // Only ever break between fares — never while the player is driving.
-          if (portal.shouldShowInterstitial()) this._adBreak();
+          this.maybeAdBreak();
         } else if (type === 'picked-up') {
           this.audio.chime(true);
-          if (portal.policy.onPickup && portal.shouldShowInterstitial()) this._adBreak();
+          if (portal.policy.onPickup) this.maybeAdBreak();
         }
         else if (type === 'fare-lost') this.audio.chime(false);
         else if (type === 'drift-banked') {
@@ -290,6 +290,7 @@ class Game {
       this.audio.resume();
       portal.gameplayStart();
       this.clock.getDelta();          // discard the paused interval
+      this.maybeAdBreak();
     }
   }
 
@@ -308,6 +309,7 @@ class Game {
       topSpeed: this.play.stats.topSpeed,
       hits: this.pedestrians.hits,
     };
+    this.maybeAdBreak();
     const records = save.recordShift(shift);
     this._shiftEnded = true;
     this.hud.hide();
@@ -333,6 +335,17 @@ class Game {
     // Esc must not dismiss the summary — that screen owns its own exit.
     if (!this.running || menus.el['panel-summary']?.classList.contains('hidden') === false) return;
     this.setPaused(!this.paused);
+  }
+
+  /**
+   * Ask for a break at a natural beat. Everything funnels through here so the
+   * portal's pacing is applied in exactly one place — calling sdk.showBanner()
+   * at each call site fires a second, unpaced ad on top of this one.
+   */
+  maybeAdBreak() {
+    if (!portal.shouldShowInterstitial()) return false;
+    this._adBreak();
+    return true;
   }
 
   /**
@@ -633,6 +646,7 @@ async function boot() {
 
   const game = new Game(stage);
   window.__limo = game;              // handy for debugging from the console
+  window.gameInstance = game;        // the name the GameMonetize snippet uses
 
   /* ------------------------------------------------------- menu callbacks */
   menus.h = {
@@ -668,7 +682,10 @@ async function boot() {
     getRecords: () => save.load(),
     onBuy: (id) => {
       const car = carById(id);
-      if (save.buy(car)) game.equipCar(car.id);
+      if (save.buy(car)) {
+        game.equipCar(car.id);
+        game.maybeAdBreak();
+      }
     },
     onEquip: (id) => { if (save.equip(id)) game.equipCar(id); },
     onResetRecords: () => {
