@@ -67,56 +67,57 @@ exposure all move together.
 
 ---
 
-## Publishing to a portal (CrazyGames / Poki)
+## Publishing to a portal
 
-`src/portal.js` is a single abstraction over both portals. **Exactly one SDK is
-loaded at runtime** — shipping two ad SDKs in one build fails review on both —
-chosen by one line in `index.html`:
+`src/portal.js` is one abstraction over **GameMonetize, CrazyGames and Poki**.
+Only one ad SDK is ever active — shipping two fails review on all of them —
+selected by one line in `index.html`:
 
 ```html
-<script>window.GAME_PORTAL = 'crazygames';</script>   <!-- or 'poki', or 'none' -->
+<script>
+  window.GAME_PORTAL = 'gamemonetize';           // or 'crazygames' / 'poki' / 'none'
+  window.GAME_ID     = 'x3p3ubo7dt5lf17cabk76rz3yfvqx257';
+</script>
 ```
 
 Append `?portal=none` to the URL to force the standalone path while testing.
 
-Wired up for both portals:
+### GameMonetize (current build)
 
-| | CrazyGames | Poki |
-| --- | --- | --- |
-| loading | `game.loadingStart/Stop` | `gameLoadingStart/Progress/Finished` |
-| gameplay | `game.gameplayStart/Stop` | `gameplayStart/Stop` |
-| reward moment | `game.happytime()` | `happyTime()` |
-| interstitial | `ad.requestAd('midgame')` | `commercialBreak()` |
-| storage | `SDK.data` | `localStorage` |
+Its SDK is loaded by `index.html` rather than by `portal.js`, because
+`window.SDK_OPTIONS` has to exist *before* the script runs. Every event is
+forwarded to the adapter:
 
-Ads only ever run **between fares**, never mid-drive, and not until the third
-one — the simulation freezes without showing the pause menu and the audio mutes
-for the duration, which both portals require. If the SDK is missing, blocked by
-an ad blocker, or its CDN hangs (8s timeout), everything falls through to a
-stub and the game plays normally. Nothing depends on an ad having played.
+| Event | What the game does |
+| --- | --- |
+| `SDK_READY` | adapter adopts `window.sdk` |
+| `SDK_GAME_PAUSE` | freezes the simulation and **mutes** — mandatory, audio under a video ad is forbidden |
+| `SDK_GAME_START` | resumes and unmutes |
+
+Breaks are triggered with `sdk.showBanner()` and resolve on the next
+`SDK_GAME_START`, with a 45s fallback for when no ad fills.
+
+### Ad pacing differs per portal, deliberately
+
+`AD_POLICY` in `src/portal.js` holds one row per portal, because the rules
+genuinely differ — GameMonetize expects a pre-roll and frequent breaks, while
+CrazyGames and Poki reject builds that do that.
+
+| | pre-roll | earliest break | min gap | on pickup |
+| --- | --- | --- | --- | --- |
+| gamemonetize | yes | immediate | 45s | yes |
+| crazygames | no | 30s into driving | 3 min | no |
+| poki | no | 30s into driving | 3 min | no |
+
+Breaks never interrupt driving: they fire on a pre-roll, on picking a passenger
+up, or on dropping one off. If the SDK is missing, blocked or its CDN hangs,
+everything falls through to a stub and the game plays normally — nothing in the
+game depends on an ad having played.
 
 ### Uploading
 
-Zip the repo root — `index.html`, `styles.css`, `src/`, `vendor/three/`. That's
-about 2.3 MB. There is no build step, so what's in the repo is what ships, and
-`node_modules/` is gitignored and not needed.
-
-### Portal-specific behaviour
-
-- **High-DPI.** The HUD canvases declare their display size in CSS and size
-  their backing store separately, so they stay correct at any device pixel
-  ratio.
-- **Blocked storage.** Portal iframes routinely partition third-party storage,
-  so saves go through `portal.getItem/setItem`, which tries the portal's own
-  store, then `localStorage`, then memory.
-- **Mobile.** Phones and tablets default to the low preset, get an on-screen
-  thumb pad, a tightened HUD (both a narrow-width *and* a short-height media
-  query, since an 860x360 handset matches neither alone), safe-area insets for
-  notches, and a rotate prompt in portrait.
-- **Audio.** The context is created inside the start-button gesture and resumed
-  explicitly, which Safari and in-app browsers need.
-- **Quality changes reload the page**, because the city, traffic fleet, light
-  pool, shadow maps and particle pools are all built from the preset.
+Zip the repo root — `index.html`, `styles.css`, `src/`, `vendor/three/`. About
+2.3 MB, no build step, `node_modules/` not needed.
 
 ## Game shell
 

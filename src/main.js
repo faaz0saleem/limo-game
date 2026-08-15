@@ -118,7 +118,10 @@ class Game {
           if (data?.payout > 700) portal.happyTime(0.8);
           // Only ever break between fares — never while the player is driving.
           if (portal.shouldShowInterstitial()) this._adBreak();
-        } else if (type === 'picked-up') this.audio.chime(true);
+        } else if (type === 'picked-up') {
+          this.audio.chime(true);
+          if (portal.policy.onPickup && portal.shouldShowInterstitial()) this._adBreak();
+        }
         else if (type === 'fare-lost') this.audio.chime(false);
         else if (type === 'drift-banked') {
           this.audio.chime(true);
@@ -244,6 +247,14 @@ class Game {
     this.clock = new THREE.Clock();
     this.accumulator = 0;
     if (first) this._loop();
+
+    // Pre-roll, where the portal expects one (GameMonetize does; the others
+    // reject it). Fired after the loop is running so the city is already on
+    // screen behind the ad rather than a blank canvas.
+    if (portal.policy.preroll) {
+      portal.noteAdShown();
+      setTimeout(() => this._adBreak(), 400);
+    }
   }
 
   /** Push the saved sound/music/volume settings into the audio engines. */
@@ -680,8 +691,10 @@ async function boot() {
   stage.camera.lookAt(0, 6, 0);
   stage.render();
 
-  // Both portals require the game to silence itself while a break plays.
+  // Every portal requires the game to silence itself while a break plays;
+  // GameMonetize additionally drives pause/resume through its own events.
   portal.onMuteChange((muted) => game.setAdMuted(muted));
+  portal.onPauseChange((paused) => { game._adPaused = paused; });
 
   portal.loadingStop();
   menus.doneLoading();

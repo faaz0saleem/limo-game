@@ -20,27 +20,36 @@
  */
 
 /**
- * Ad pacing.
+ * Ad pacing, per portal — because the rules genuinely differ.
  *
- * Both portals reject builds that advertise too aggressively: no ad before the
- * game is playable, none during gameplay, and CrazyGames requires at least
- * three minutes between interstitials. `AD_COOLDOWN_MS` is the one number to
- * change if that policy ever moves — dropping it below 180000 risks the game
- * failing review, which costs far more than the extra impressions earn.
+ * CrazyGames and Poki reject builds that advertise too aggressively: nothing
+ * before the game is playable, nothing during gameplay, and at least three
+ * minutes between interstitials. GameMonetize is built the other way round —
+ * it expects a pre-roll and frequent breaks — so it gets the aggressive
+ * settings and the others stay compliant.
+ *
+ *   preroll      show a break the moment a shift starts
+ *   firstDelayMs earliest a break may fire, measured from gameplay start
+ *   gapMs        minimum spacing between breaks
+ *   onPickup     also break when a passenger gets in, not just on drop-off
  */
-export const AD_COOLDOWN_MS = 180000;
+export const AD_POLICY = {
+  gamemonetize: { preroll: true, firstDelayMs: 0, gapMs: 45000, onPickup: true },
+  crazygames: { preroll: false, firstDelayMs: 30000, gapMs: 180000, onPickup: false },
+  poki: { preroll: false, firstDelayMs: 30000, gapMs: 180000, onPickup: false },
+  none: { preroll: false, firstDelayMs: 0, gapMs: 45000, onPickup: true },
+};
 
-/**
- * How long after the player actually starts driving the first interstitial may
- * fire. Deliberately short so the first break lands early; it is measured from
- * gameplay start, never from page load, because an ad before the game is
- * playable is an automatic rejection on both portals.
- */
-export const FIRST_AD_DELAY_MS = 30000;
+/* Kept for anything still importing the old names. */
+export const AD_COOLDOWN_MS = AD_POLICY.crazygames.gapMs;
+export const FIRST_AD_DELAY_MS = AD_POLICY.crazygames.firstDelayMs;
 
 const SDK_URLS = {
   crazygames: 'https://sdk.crazygames.com/crazygames-sdk-v3.js',
   poki: 'https://game-cdn.poki.com/scripts/v2/poki-sdk.js',
+  // GameMonetize is loaded by index.html, because its SDK_OPTIONS block has to
+  // exist before the script runs. Nothing to inject here.
+  gamemonetize: null,
 };
 
 function loadScript(src, timeoutMs = 8000) {
@@ -69,6 +78,7 @@ class Portal {
     this.adPlaying = false;
     this._gameplayActive = false;
     this._muteHandlers = [];
+    this._pauseHandlers = [];
     this._sinceAd = 0;
     this._lastAdAt = 0;
     this.gameId = typeof window !== 'undefined' ? window.GAME_ID ?? null : null;
@@ -82,8 +92,13 @@ class Portal {
     const override = new URLSearchParams(location.search).get('portal');
     const wanted = (override || window.GAME_PORTAL || 'none').toLowerCase();
 
-    if (!SDK_URLS[wanted]) {
+    if (!(wanted in SDK_URLS)) {
       console.info('[portal] running standalone (no portal SDK)');
+      return this;
+    }
+
+    if (wanted === 'gamemonetize') {
+      await this._initGameMonetize();
       return this;
     }
 
@@ -121,6 +136,67 @@ class Portal {
 
   get active() {
     return this.sdk !== null;
+  }
+
+  /** The pacing rules for whichever portal is live. */
+  get policy() {
+    return AD_POLICY[this.name] ?? AD_POLICY.none;
+  }
+
+  /**
+   * GameMonetize's SDK is loaded by index.html so that `window.SDK_OPTIONS`
+   * exists before the script runs. All we do here is adopt the global it
+   * creates and route its lifecycle events.
+   *
+   * Its contract is event-driven rather than promise-based:
+   *   SDK_READY        the SDK is usable
+   *   SDK_GAME_PAUSE   an ad is about to play — pause and mute, mandatory
+   *   SDK_GAME_START   the ad finished — resume and unmute
+   */
+  async _initGameMonetize() {
+    // index.html forwards every SDK event here.
+    window.__limoPortalEvent = (name) => {
+      if (name === 'SDK_GAME_PAUSE') {
+        this.adPlaying = true;
+        this._emitMute(true);
+        this._emitPause(true);
+      } else if (name === 'SDK_GAME_START') {
+        this.adPlaying = false;
+        this._emitMute(false);
+        this._emitPause(false);
+        this._resolveBreak?.();
+      } else if (name === 'SDK_READY') {
+        this._sdkReady = true;
+      }
+    };
+
+    // Wait briefly for the SDK; if it never arrives (blocked, offline) the
+    // game carries on with no ads at all.
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (window.sdk || this._sdkReady) break;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+
+    if (window.sdk) {
+      this.sdk = window.sdk;
+      this.name = 'gamemonetize';
+      console.info('[portal] gamemonetize ready', this.gameId ?? '');
+    } else {
+      console.info('[portal] gamemonetize SDK unavailable — continuing without ads');
+    }
+    return this;
+  }
+
+  /** Fired alongside mute so the game can freeze for the duration of an ad. */
+  onPauseChange(fn) {
+    this._pauseHandlers.push(fn);
+  }
+
+  _emitPause(paused) {
+    for (const fn of this._pauseHandlers) {
+      try { fn(paused); } catch { /* a broken handler must not break the ad */ }
+    }
   }
 
   _isLocal() {
@@ -200,7 +276,19 @@ class Portal {
     this._emitMute(true);
 
     try {
-      if (this.name === 'crazygames') {
+      if (this.name === 'gamemonetize') {
+        await new Promise((resolve) => {
+          let settled = false;
+          const done = () => { if (!settled) { settled = true; this._resolveBreak = null; resolve(); } };
+          this._resolveBreak = done;          // SDK_GAME_START calls this
+          try {
+            if (typeof this.sdk.showBanner === 'function') this.sdk.showBanner();
+            else done();
+          } catch { done(); }
+          // If no ad fills, SDK_GAME_START may never come.
+          setTimeout(done, 45000);
+        });
+      } else if (this.name === 'crazygames') {
         await new Promise((resolve) => {
           let settled = false;
           const done = () => { if (!settled) { settled = true; resolve(); } };
@@ -232,21 +320,24 @@ class Portal {
    * binding constraint, not the fare count.
    */
   shouldShowInterstitial() {
-    this._sinceAd += 1;
+    if (!this.active) return false;
+    const pol = this.policy;
     const now = Date.now();
 
-    // First break comes 30s into actual driving, not 30s into the page load.
     if (!this._lastAdAt) {
-      if (!this._firstPlayAt || now - this._firstPlayAt < FIRST_AD_DELAY_MS) return false;
-      this._lastAdAt = now;
-      this._sinceAd = 0;
-      return true;
+      // Measured from gameplay start, never from page load.
+      if (!this._firstPlayAt || now - this._firstPlayAt < pol.firstDelayMs) return false;
+    } else if (now - this._lastAdAt < pol.gapMs) {
+      return false;
     }
 
-    if (now - this._lastAdAt < AD_COOLDOWN_MS) return false;
     this._lastAdAt = now;
-    this._sinceAd = 0;
     return true;
+  }
+
+  /** Mark a break as shown, for breaks triggered outside the fare loop. */
+  noteAdShown() {
+    this._lastAdAt = Date.now();
   }
 
   onMuteChange(fn) {
