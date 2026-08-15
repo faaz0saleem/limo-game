@@ -154,7 +154,18 @@ class Portal {
    *   SDK_GAME_START   the ad finished — resume and unmute
    */
   async _initGameMonetize() {
-    // index.html forwards every SDK event here.
+    /*
+     * Never block boot on the SDK, and never give up on it.
+     *
+     * This used to poll for window.sdk for eight seconds and then permanently
+     * disable ads. On a slow connection the SDK arrives later than that, so
+     * the game would run with no advertising at all — and GameMonetize will
+     * not list a game until its verifier has seen a complete ad play. Now the
+     * portal claims the name immediately, attaches whenever the SDK turns up,
+     * and replays any break that was requested in the meantime.
+     */
+    this.name = 'gamemonetize';
+
     window.__limoPortalEvent = (name) => {
       if (name === 'SDK_GAME_PAUSE') {
         this.adPlaying = true;
@@ -167,25 +178,32 @@ class Portal {
         this._resolveBreak?.();
       } else if (name === 'SDK_READY') {
         this._sdkReady = true;
+        this._attachSdk();
       }
     };
 
-    // Wait briefly for the SDK; if it never arrives (blocked, offline) the
-    // game carries on with no ads at all.
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      if (window.sdk || this._sdkReady) break;
-      await new Promise((r) => setTimeout(r, 120));
-    }
+    // SDK_READY is the documented signal, but poll as a backstop in case the
+    // global appears without the event firing.
+    let waited = 0;
+    const poll = setInterval(() => {
+      waited += 500;
+      this._attachSdk();
+      if (this.sdk || waited > 120000) clearInterval(poll);
+    }, 500);
+    this._attachSdk();
 
-    if (window.sdk) {
-      this.sdk = window.sdk;
-      this.name = 'gamemonetize';
-      console.info('[portal] gamemonetize ready', this.gameId ?? '');
-    } else {
-      console.info('[portal] gamemonetize SDK unavailable — continuing without ads');
-    }
     return this;
+  }
+
+  /** Adopt window.sdk once it exists, and flush a queued break. */
+  _attachSdk() {
+    if (this.sdk || typeof window.sdk === 'undefined' || !window.sdk) return;
+    this.sdk = window.sdk;
+    console.info('[portal] gamemonetize SDK attached', this.gameId ?? '');
+    if (this._pendingBreak) {
+      this._pendingBreak = false;
+      this.commercialBreak();
+    }
   }
 
   /** Fired alongside mute so the game can freeze for the duration of an ad. */
@@ -217,6 +235,7 @@ class Portal {
   /* --------------------------------------------------------------- loading */
 
   loadingStart() {
+    if (this.name === 'gamemonetize') return;   // no such API
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.loadingStart();
       else this.sdk.gameLoadingStart();
@@ -232,6 +251,7 @@ class Portal {
   }
 
   loadingStop() {
+    if (this.name === 'gamemonetize') return;
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.loadingStop();
       else this.sdk.gameLoadingFinished();
@@ -244,6 +264,7 @@ class Portal {
     if (this._gameplayActive) return;
     this._gameplayActive = true;
     if (!this._firstPlayAt) this._firstPlayAt = Date.now();
+    if (this.name === 'gamemonetize') return;
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.gameplayStart();
       else this.sdk.gameplayStart();
@@ -253,6 +274,7 @@ class Portal {
   gameplayStop() {
     if (!this._gameplayActive) return;
     this._gameplayActive = false;
+    if (this.name === 'gamemonetize') return;
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.gameplayStop();
       else this.sdk.gameplayStop();
@@ -260,6 +282,7 @@ class Portal {
   }
 
   happyTime(intensity = 1) {
+    if (this.name === 'gamemonetize') return;
     const v = Math.max(0, Math.min(1, intensity));
     this._try(() => {
       if (this.name === 'crazygames') this.sdk.game.happytime();
@@ -276,14 +299,21 @@ class Portal {
     this._emitMute(true);
 
     try {
-      if (this.name === 'gamemonetize') {
+      if (this.name === 'gamemonetize' && !this.sdk) {
+        // Not ready yet — remember it and let the player carry on. _attachSdk
+        // replays it the moment the SDK lands.
+        this._pendingBreak = true;
+        console.info('[portal] break queued until the SDK is ready');
+      } else if (this.name === 'gamemonetize') {
         await new Promise((resolve) => {
           let settled = false;
           const done = () => { if (!settled) { settled = true; this._resolveBreak = null; resolve(); } };
           this._resolveBreak = done;          // SDK_GAME_START calls this
           try {
-            if (typeof this.sdk.showBanner === 'function') this.sdk.showBanner();
-            else done();
+            if (typeof this.sdk.showBanner === 'function') {
+              console.info('[portal] sdk.showBanner()');
+              this.sdk.showBanner();
+            } else done();
           } catch { done(); }
           // If no ad fills, SDK_GAME_START may never come.
           setTimeout(done, 45000);
@@ -320,7 +350,9 @@ class Portal {
    * binding constraint, not the fare count.
    */
   shouldShowInterstitial() {
-    if (!this.active) return false;
+    // Deliberately not gated on `active`: with GameMonetize the SDK can attach
+    // after the first break is due, and that break still needs to happen.
+    if (this.name === 'none') return false;
     const pol = this.policy;
     const now = Date.now();
 

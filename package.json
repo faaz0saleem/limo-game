@@ -6,8 +6,15 @@
   "type": "module",
   "scripts": {
     "start": "npx --yes http-server . -p 8080 -c-1 -o",
-    "serve": "npx --yes http-server . -p 8080 -c-1"
+    "serve": "npx --yes http-server . -p 8080 -c-1",
+    "zip": "node tools/make-zip.mjs"
   },
-  "keywords": ["three.js", "webgl", "game", "drift", "3d"],
+  "keywords": [
+    "three.js",
+    "webgl",
+    "game",
+    "drift",
+    "3d"
+  ],
   "license": "MIT"
 }
