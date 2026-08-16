@@ -6,8 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "npx --yes http-server . -p 8080 -c-1 -o",
-    "serve": "npx --yes http-server . -p 8080 -c-1",
-    "zip": "node tools/make-zip.mjs"
+    "serve": "npx --yes http-server . -p 8080 -c-1"
   },
   "keywords": [
     "three.js",

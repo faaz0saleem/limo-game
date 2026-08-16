@@ -18,8 +18,8 @@ export const ROAD_W = 32;
 export const BLOCK = PITCH - ROAD_W;      // 62
 export const HALF_CITY = (GRID / 2) * PITCH + ROAD_W / 2;   // 345
 
-const FACADE_VARIANTS = 6;
-const NEON_VARIANTS = 6;
+const FACADE_VARIANTS = 4;
+const NEON_VARIANTS = 4;
 const TILE_W = 9;
 const TILE_H = 18;
 
@@ -162,7 +162,7 @@ export class City {
         for (const [ax, az] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
           const bx = jx + ax * (ROAD_W / 2 - bandLen / 2 - 0.6);
           const bz = jz + az * (ROAD_W / 2 - bandLen / 2 - 0.6);
-          for (let k = -3; k <= 3; k++) {
+          for (let k = -2; k <= 2; k++) {
             const sx = bx + (ax !== 0 ? 0 : k * stripeGap);
             const sz = bz + (az !== 0 ? 0 : k * stripeGap);
             const w = ax !== 0 ? bandLen : stripeW;

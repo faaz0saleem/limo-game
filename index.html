@@ -9,40 +9,6 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🚘</text></svg>">
 
-<!-- Which portal this build targets: 'gamemonetize', 'crazygames', 'poki' or
-     'none'. Only one ad SDK is ever active — shipping two fails review on all
-     of them — so change this line rather than adding another script tag. -->
-<script>
-  window.GAME_PORTAL = 'gamemonetize';
-  window.GAME_ID = 'x3p3ubo7dt5lf17cabk76rz3yfvqx257';
-</script>
-
-<!-- GameMonetize HTML5 SDK.
-     SDK_OPTIONS must exist before the script runs, which is why this lives in
-     the page rather than in src/portal.js like the other portals. Every event
-     is forwarded to the portal adapter, which pauses and mutes the game on
-     SDK_GAME_PAUSE and resumes it on SDK_GAME_START — muting during a video ad
-     is mandatory. -->
-<script type="text/javascript">
-  window.SDK_OPTIONS = {
-    gameId: window.GAME_ID,
-    onEvent: function (a) {
-      switch (a.name) {
-        case 'SDK_GAME_PAUSE':   // an ad is starting: pause + mute
-        case 'SDK_GAME_START':   // ad finished: resume + unmute
-        case 'SDK_READY':
-          if (window.__limoPortalEvent) window.__limoPortalEvent(a.name);
-          break;
-      }
-    },
-  };
-  (function (a, b, c) {
-    var d = a.getElementsByTagName(b)[0];
-    a.getElementById(c) || (a = a.createElement(b), a.id = c,
-      a.src = 'https://api.gamemonetize.com/sdk.js', d.parentNode.insertBefore(a, d));
-  })(document, 'script', 'gamemonetize-sdk');
-</script>
-
 <script type="importmap">
 {
   "imports": {

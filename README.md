@@ -5,10 +5,9 @@ stretch limousine through a neon grid, pick up fares, and get paid extra for
 arriving sideways.
 
 Built on [three.js](https://threejs.org). **No build step and no external
-assets** — every texture, model and sound in the game is generated
-procedurally at load time, and three.js itself is vendored into the repo. The
-only network request is the portal SDK (CrazyGames or Poki); block it and the
-game still plays.
+assets and no network requests at all** — every texture, model and sound in the
+game is generated procedurally at load time, and three.js itself is vendored
+into the repo.
 
 ---
 
@@ -67,83 +66,15 @@ exposure all move together.
 
 ---
 
-## Publishing to a portal
+## Publishing
 
-`src/portal.js` is one abstraction over **GameMonetize, CrazyGames and Poki**.
-Only one ad SDK is ever active — shipping two fails review on all of them —
-selected by one line in `index.html`:
+No build step and no ad SDK — zip `index.html`, `styles.css`, `src/` and
+`vendor/three/` with **index.html at the root of the archive**, and upload. The
+whole thing is about 2.3 MB and runs from any static host.
 
-```html
-<script>
-  window.GAME_PORTAL = 'gamemonetize';           // or 'crazygames' / 'poki' / 'none'
-  window.GAME_ID     = 'x3p3ubo7dt5lf17cabk76rz3yfvqx257';
-</script>
-```
-
-Append `?portal=none` to the URL to force the standalone path while testing.
-
-### GameMonetize (current build)
-
-Its SDK is loaded by `index.html` rather than by `portal.js`, because
-`window.SDK_OPTIONS` has to exist *before* the script runs. Every event is
-forwarded to the adapter:
-
-| Event | What the game does |
-| --- | --- |
-| `SDK_READY` | adapter adopts `window.sdk` |
-| `SDK_GAME_PAUSE` | freezes the simulation and **mutes** — mandatory, audio under a video ad is forbidden |
-| `SDK_GAME_START` | resumes and unmutes |
-
-Breaks are triggered with `sdk.showBanner()` and resolve on the next
-`SDK_GAME_START`, with a 45s fallback for when no ad fills.
-
-### Ad pacing differs per portal, deliberately
-
-`AD_POLICY` in `src/portal.js` holds one row per portal, because the rules
-genuinely differ — GameMonetize expects a pre-roll and frequent breaks, while
-CrazyGames and Poki reject builds that do that.
-
-| | pre-roll | earliest break | min gap | on pickup |
-| --- | --- | --- | --- | --- |
-| gamemonetize | yes | immediate | 45s | yes |
-| crazygames | no | 30s into driving | 3 min | no |
-| poki | no | 30s into driving | 3 min | no |
-
-Breaks never interrupt driving: they fire on a pre-roll, on picking a passenger
-up, or on dropping one off. If the SDK is missing, blocked or its CDN hangs,
-everything falls through to a stub and the game plays normally — nothing in the
-game depends on an ad having played.
-
-### Uploading
-
-```bash
-npm run zip        # writes midnight-limo.zip, ~0.5 MB
-```
-
-`index.html` ends up at the **root of the archive**, which is what the portals
-require — zipping the containing folder instead is the usual reason an upload
-is rejected.
-
-### If GameMonetize will not activate the game
-
-Their verifier only lists a game once it has watched a complete ad inside their
-iframe. Things that stop that happening, all of which this build now handles:
-
-- **The SDK arriving late.** It is fetched from their CDN and can take well
-  over ten seconds. The adapter claims the portal immediately, attaches
-  whenever the SDK turns up, and replays any break requested in the meantime —
-  it never gives up and disables ads.
-- **`SDK_OPTIONS` defined after the loader.** It has to exist before the script
-  runs, which is why it lives in `index.html` and not in `portal.js`.
-- **Two SDK blocks.** Only one can exist: a second overwrites the first's
-  `onEvent`, and the loader no-ops on the duplicate script id.
-- **Ads not muting.** `SDK_GAME_PAUSE` freezes the simulation and mutes;
-  `SDK_GAME_START` resumes. Audio under a video ad is forbidden.
-- **`sdk.showBanner !== 'undefined'`.** That check, straight from their docs,
-  compares a function to a string and is always true. Use `typeof`.
-
-Open the console while testing: the adapter logs `SDK attached` and
-`sdk.showBanner()` so you can see exactly where a break did or did not fire.
+Saves go through `src/storage.js`, which falls back to memory when
+`localStorage` is blocked — embedding sites routinely partition third-party
+storage, and touching it there throws rather than returning null.
 
 ## Game shell
 

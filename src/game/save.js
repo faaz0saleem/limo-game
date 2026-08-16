@@ -1,9 +1,8 @@
-import { portal } from '../portal.js';
+import { getItem, setItem } from '../storage.js';
 
 /**
- * Persistent records and settings, routed through the portal so they survive
- * a partitioned iframe. Everything is defensive: a corrupt or missing store
- * just yields defaults rather than breaking the boot.
+ * Persistent records and settings. Everything is defensive: a corrupt or
+ * missing store just yields defaults rather than breaking the boot.
  */
 
 const KEY = 'limo.save.v1';
@@ -42,7 +41,7 @@ class Save {
     if (this._loaded) return this.data;
     this._loaded = true;
     try {
-      const raw = portal.getItem(KEY);
+      const raw = getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         this.data = {
@@ -59,7 +58,7 @@ class Save {
 
   save() {
     try {
-      portal.setItem(KEY, JSON.stringify(this.data));
+      setItem(KEY, JSON.stringify(this.data));
     } catch { /* nothing we can do; the session still works */ }
   }
 

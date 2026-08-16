@@ -25,9 +25,9 @@ const PALETTE = {
     windows: 0.65, exposure: 1.0, starFade: 0.15,
   },
   day: {
-    top: 0x2f6ec4, horizon: 0xa9c9e8, glow: 0xdfe9f5,
-    fog: 0x9fb8d4, key: 0xfff4e0, keyIntensity: 5.2,
-    ambientSky: 0xb8d4ff, ambientGround: 0x8a7d6a, ambientIntensity: 3.4,
+    top: 0x4a7fb8, horizon: 0xc2d4e2, glow: 0xe8eef2,
+    fog: 0xb6c6d2, key: 0xfff2df, keyIntensity: 4.6,
+    ambientSky: 0xc6d8ee, ambientGround: 0x9a8f7e, ambientIntensity: 3.0,
     windows: 0.04, exposure: 1.0, starFade: 0,
   },
   dusk: {

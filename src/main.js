@@ -13,7 +13,6 @@ import { Input } from './game/input.js';
 import { Gameplay } from './game/gameplay.js';
 import { HUD } from './ui/hud.js';
 import { EngineAudio } from './audio/engine.js';
-import { portal } from './portal.js';
 import { save } from './game/save.js';
 import { Music } from './audio/music.js';
 import { Menus } from './ui/menus.js';
@@ -25,11 +24,18 @@ import { clamp, damp, lerp } from './util.js';
 /* ---------------------------------------------------------------- boot */
 
 let menus;                      // created in boot(), before anything else
-const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+/*
+ * Yield between build phases so the loading bar repaints.
+ *
+ * This used to await requestAnimationFrame, which waits for the *renderer* —
+ * and while the city is being built frames are slow, so six of these cost
+ * whole seconds on their own. A macrotask still lets the browser paint but
+ * returns as soon as the event loop is free.
+ */
+const nextFrame = () => new Promise((r) => setTimeout(r, 0));
 
 function progress(pct, text) {
   menus.setProgress(pct, text);
-  portal.loadingProgress(pct / 100);
 }
 
 /* --------------------------------------------------------------- game */
@@ -44,7 +50,6 @@ class Game {
     this.smokeAcc = 0;
     this.exhaustAcc = 0;
     this.music = new Music();
-    this._adMuted = false;
   }
 
   async build() {
@@ -52,11 +57,9 @@ class Game {
 
     progress(14, 'painting the sky');
     await nextFrame();
-    const { envMap, background } = buildNightEnvironment(this.stage.renderer);
+    const { envMap } = buildNightEnvironment(this.stage.renderer);
     this.envMap = envMap;
-    scene.environment = envMap;
-    scene.background = background;
-    scene.backgroundIntensity = 0.55;
+    scene.environment = envMap;   // reflections; the sky dome is the visible sky
     buildFog(scene, { near: 70, far: this.stage.settings.drawDistance, color: 0x0b1020 });
     this.sky = makeSkyDome(2400);
     scene.add(this.sky);
@@ -115,17 +118,13 @@ class Game {
       onEvent: (type, data) => {
         if (type === 'fare-paid') {
           this.audio.chime(true);
-          if (data?.payout > 700) portal.happyTime(0.8);
           // Only ever break between fares — never while the player is driving.
-          this.maybeAdBreak();
         } else if (type === 'picked-up') {
           this.audio.chime(true);
-          if (portal.policy.onPickup) this.maybeAdBreak();
         }
         else if (type === 'fare-lost') this.audio.chime(false);
         else if (type === 'drift-banked') {
           this.audio.chime(true);
-          if (data?.total > 3000) portal.happyTime(0.6);
         }
       },
     });
@@ -243,34 +242,21 @@ class Game {
     }
     this.applyAudioSettings();
 
-    portal.gameplayStart();
     this.clock = new THREE.Clock();
     this.accumulator = 0;
     if (first) this._loop();
 
-    // Pre-roll, where the portal expects one (GameMonetize does; the others
-    // reject it). Fired after the loop is running so the city is already on
-    // screen behind the ad rather than a blank canvas.
-    if (portal.policy.preroll) {
-      portal.noteAdShown();
-      setTimeout(() => this._adBreak(), 400);
-    }
   }
 
   /** Push the saved sound/music/volume settings into the audio engines. */
   applyAudioSettings() {
     const s = save.settings;
-    this.audio.setMuted(this._adMuted || !s.sound);
+    this.audio.setMuted(!s.sound);
     this.audio.setVolume?.(s.volume);
-    this.music.setEnabled(!this._adMuted && s.music);
+    this.music.setEnabled(s.music);
     this.music.setVolume(s.volume);
   }
 
-  /** Portals require silence for the duration of a break. */
-  setAdMuted(muted) {
-    this._adMuted = muted;
-    this.applyAudioSettings();
-  }
 
   /** Explicit pause state, so menus and the Esc key can't get out of sync. */
   setPaused(paused) {
@@ -278,7 +264,6 @@ class Game {
     this.paused = paused;
     if (paused) {
       this.audio.suspend();
-      portal.gameplayStop();
       menus.showPause({
         cash: this.play.cash,
         fares: this.play.fares,
@@ -288,9 +273,7 @@ class Game {
     } else {
       menus.hide();
       this.audio.resume();
-      portal.gameplayStart();
-      this.clock.getDelta();          // discard the paused interval
-      this.maybeAdBreak();
+        this.clock.getDelta();          // discard the paused interval
     }
   }
 
@@ -299,7 +282,6 @@ class Game {
     if (!this.running) return;
     this.paused = true;
     this.audio.suspend();
-    portal.gameplayStop();
 
     const shift = {
       cash: this.play.cash,
@@ -309,7 +291,6 @@ class Game {
       topSpeed: this.play.stats.topSpeed,
       hits: this.pedestrians.hits,
     };
-    this.maybeAdBreak();
     const records = save.recordShift(shift);
     this._shiftEnded = true;
     this.hud.hide();
@@ -332,41 +313,15 @@ class Game {
   }
 
   togglePause() {
-    // Esc must not dismiss the summary — that screen owns its own exit.
-    if (!this.running || menus.el['panel-summary']?.classList.contains('hidden') === false) return;
+    if (!this.running) return;
+    /*
+     * Esc must not dismiss the summary — that screen owns its own exit. This
+     * used to test the panel's `hidden` class directly, but hiding the overlay
+     * leaves the last panel's class untouched, so after DRIVE AGAIN the guard
+     * still saw the summary as open and Esc stopped working entirely.
+     */
+    if (menus.shownPanel === 'panel-summary') return;
     this.setPaused(!this.paused);
-  }
-
-  /**
-   * Ask for a break at a natural beat. Everything funnels through here so the
-   * portal's pacing is applied in exactly one place — calling sdk.showBanner()
-   * at each call site fires a second, unpaced ad on top of this one.
-   */
-  maybeAdBreak() {
-    if (!portal.shouldShowInterstitial()) return false;
-    this._adBreak();
-    return true;
-  }
-
-  /**
-   * Freeze the simulation for an interstitial without showing the pause menu,
-   * then hand control straight back. `_adPaused` is separate from `paused` so
-   * a break can't be dismissed with Esc and can't leave the menu on screen.
-   */
-  async _adBreak() {
-    if (this._adPaused) return;
-    this._adPaused = true;
-    this.audio.suspend();
-    try {
-      await portal.commercialBreak();
-    } finally {
-      this._adPaused = false;
-      if (!this.paused) {
-        this.audio.resume();
-        portal.gameplayStart();
-      }
-      this.clock.getDelta();        // don't integrate the ad's duration
-    }
   }
 
   /* --------------------------------------------------------- simulation */
@@ -532,7 +487,7 @@ class Game {
   _loop = () => {
     if (!this.running) return;
     requestAnimationFrame(this._loop);
-    if (this.paused || this._adPaused) return;
+    if (this.paused) return;
 
     const raw = Math.min(this.clock.getDelta(), 0.1);
     this.elapsed += raw;
@@ -625,11 +580,8 @@ function defaultQuality() {
 
 async function boot() {
   menus = new Menus();
-  menus.setProgress(4, 'contacting the portal');
+  menus.setProgress(4, 'warming up');
 
-  // The portal has to come up first: it owns the storage the settings live in.
-  await portal.init();
-  portal.loadingStart();
 
   const settings = save.load().settings;
   const quality = QUALITY[settings.quality] ? settings.quality : defaultQuality();
@@ -646,7 +598,6 @@ async function boot() {
 
   const game = new Game(stage);
   window.__limo = game;              // handy for debugging from the console
-  window.gameInstance = game;        // the name the GameMonetize snippet uses
 
   /* ------------------------------------------------------- menu callbacks */
   menus.h = {
@@ -684,7 +635,6 @@ async function boot() {
       const car = carById(id);
       if (save.buy(car)) {
         game.equipCar(car.id);
-        game.maybeAdBreak();
       }
     },
     onEquip: (id) => { if (save.equip(id)) game.equipCar(id); },
@@ -708,12 +658,7 @@ async function boot() {
   stage.camera.lookAt(0, 6, 0);
   stage.render();
 
-  // Every portal requires the game to silence itself while a break plays;
-  // GameMonetize additionally drives pause/resume through its own events.
-  portal.onMuteChange((muted) => game.setAdMuted(muted));
-  portal.onPauseChange((paused) => { game._adPaused = paused; });
 
-  portal.loadingStop();
   menus.doneLoading();
   menus.syncSettings(save.settings, stage.quality);
   menus.showTitle(save.load());

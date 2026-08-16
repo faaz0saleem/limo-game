@@ -14,9 +14,9 @@ export const CinematicShader = {
     tDiffuse: { value: null },
     uTime: { value: 0 },
     uSpeed: { value: 0 },        // 0..1, drives radial blur + aberration
-    uVignette: { value: 0.62 },
-    uAberration: { value: 1.0 },
-    uGrain: { value: 0.045 },
+    uVignette: { value: 0.34 },
+    uAberration: { value: 0.4 },
+    uGrain: { value: 0.016 },
     uDamage: { value: 0 },       // brief red pulse on impact
     uSamples: { value: 6 },
   },

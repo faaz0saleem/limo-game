@@ -8,15 +8,22 @@ import { mulberry32 } from '../util.js';
  * as coloured plastic — it's the single highest-value graphics call here.
  */
 export function buildNightEnvironment(renderer) {
-  const W = 2048, H = 1024;
+  /*
+   * This texture is *only* the reflection probe — the visible sky is drawn by
+   * the dome shader in post.js, which does its own stars and sun. So it needs
+   * the broad distribution of light and nothing else.
+   *
+   * It used to be a 2048x1024 canvas with 2,600 individually stroked stars,
+   * and PMREM-ing that cost ~2.5s of a ~5s load: half the loading screen spent
+   * on detail that is blurred into irrelevance by the convolution anyway.
+   * A small, smooth gradient produces the same reflections.
+   */
+  const W = 256, H = 128;
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const ctx = c.getContext('2d');
-  const rand = mulberry32(20260810);
 
-  // Zenith → horizon gradient. The warm band at the bottom is the city's
-  // light pollution bouncing off the cloud deck.
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0.00, '#03040a');
   sky.addColorStop(0.32, '#080e22');
@@ -29,53 +36,38 @@ export function buildNightEnvironment(renderer) {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 
-  // Stars, thinning out toward the horizon haze.
-  for (let i = 0; i < 2600; i++) {
+  // A few horizon glow domes: distant districts burning neon. These are what
+  // actually show up in the chrome.
+  const rand = mulberry32(20260810);
+  for (let i = 0; i < 10; i++) {
     const x = rand() * W;
-    const y = Math.pow(rand(), 1.7) * H * 0.55;
-    const r = rand() * 1.5 + 0.25;
-    const a = (1 - y / (H * 0.55)) * (0.25 + rand() * 0.75);
-    ctx.fillStyle = `rgba(${210 + rand() * 45 | 0},${220 + rand() * 35 | 0},255,${a.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Moon, plus its halo — the key light in the scene points from here.
-  const mx = W * 0.72, my = H * 0.20;
-  const halo = ctx.createRadialGradient(mx, my, 0, mx, my, 190);
-  halo.addColorStop(0, 'rgba(220,232,255,.55)');
-  halo.addColorStop(0.25, 'rgba(150,180,255,.16)');
-  halo.addColorStop(1, 'rgba(90,120,220,0)');
-  ctx.fillStyle = halo;
-  ctx.fillRect(mx - 200, my - 200, 400, 400);
-  ctx.fillStyle = '#eef3ff';
-  ctx.beginPath();
-  ctx.arc(mx, my, 21, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Uneven glow domes along the horizon: distant districts burning neon.
-  for (let i = 0; i < 22; i++) {
-    const x = rand() * W;
-    const r = 120 + rand() * 320;
+    const r = 18 + rand() * 46;
     const hue = rand() < 0.5 ? 20 + rand() * 30 : 190 + rand() * 130;
     const g = ctx.createRadialGradient(x, H * 0.735, 0, x, H * 0.735, r);
-    g.addColorStop(0, `hsla(${hue},85%,62%,${0.16 + rand() * 0.2})`);
+    g.addColorStop(0, `hsla(${hue},85%,62%,${0.18 + rand() * 0.2})`);
     g.addColorStop(1, 'hsla(0,0%,0%,0)');
     ctx.fillStyle = g;
     ctx.fillRect(x - r, H * 0.735 - r, r * 2, r * 2);
   }
+
+  // Moon glow, as a soft blob — the disc itself is drawn by the sky dome.
+  const mx = W * 0.72, my = H * 0.20;
+  const halo = ctx.createRadialGradient(mx, my, 0, mx, my, 26);
+  halo.addColorStop(0, 'rgba(220,232,255,.65)');
+  halo.addColorStop(1, 'rgba(90,120,220,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(mx - 26, my - 26, 52, 52);
 
   const equirect = new THREE.CanvasTexture(c);
   equirect.mapping = THREE.EquirectangularReflectionMapping;
   equirect.colorSpace = THREE.SRGBColorSpace;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
-  pmrem.compileEquirectangularShader();
   const envMap = pmrem.fromEquirectangular(equirect).texture;
   pmrem.dispose();
+  equirect.dispose();
 
-  return { envMap, background: equirect };
+  return { envMap, background: null };
 }
 
 /** Layered fog so distant towers fade into the skyline instead of popping in. */

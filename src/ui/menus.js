@@ -119,6 +119,7 @@ export class Menus {
 
   show(id, returnTo = null) {
     this._returnTo = returnTo;
+    this.activePanel = id;
     // Coming back to the title after a shift must show the updated records.
     if (id === 'panel-start' && this.h.getRecords) this._paintRecords(this.h.getRecords());
     this.overlay.classList.remove('hidden');
@@ -127,6 +128,11 @@ export class Menus {
 
   hide() {
     this.overlay.classList.add('hidden');
+  }
+
+  /** Which panel is actually on screen — nothing, if the overlay is hidden. */
+  get shownPanel() {
+    return this.visible ? this.activePanel : null;
   }
 
   get visible() {
@@ -275,6 +281,6 @@ export class Menus {
       } else {
         (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
       }
-    } catch { /* portals sometimes disallow it; not worth surfacing */ }
+    } catch { /* some embeds disallow it; not worth surfacing */ }
   }
 }

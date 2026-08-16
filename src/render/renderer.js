@@ -10,17 +10,17 @@ import { clamp, damp } from '../util.js';
 
 export const QUALITY = {
   low: {
-    pixelRatio: 1.0, shadows: false, shadowSize: 1024, bloom: 0.42,
+    pixelRatio: 1.0, shadows: false, shadowSize: 1024, bloom: 0.34,
     smaa: false, cinematic: true, samples: 3, drawDistance: 380,
     particles: 220, skidSegments: 900, lightsPerBlock: 1,
   },
   high: {
-    pixelRatio: 1.5, shadows: true, shadowSize: 2048, bloom: 0.62,
+    pixelRatio: 1.5, shadows: true, shadowSize: 2048, bloom: 0.48,
     smaa: true, cinematic: true, samples: 6, drawDistance: 620,
     particles: 520, skidSegments: 2200, lightsPerBlock: 1,
   },
   ultra: {
-    pixelRatio: 2.0, shadows: true, shadowSize: 4096, bloom: 0.78,
+    pixelRatio: 2.0, shadows: true, shadowSize: 4096, bloom: 0.58,
     smaa: true, cinematic: true, samples: 10, drawDistance: 900,
     particles: 900, skidSegments: 4000, lightsPerBlock: 2,
   },
@@ -67,7 +67,7 @@ export class Stage {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(size.x, size.y), q.bloom, 0.5, 0.88,
+      new THREE.Vector2(size.x, size.y), q.bloom, 0.42, 0.95,
     );
     this.composer.addPass(this.bloomPass);
 

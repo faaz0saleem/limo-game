@@ -114,8 +114,10 @@ function normalFromField(field, size, strength = 2.2) {
  */
 export function asphaltMaps() {
   return memo('asphalt', () => {
-    const S = 512;
-    const grain = fbmField(S, 6, 1337);
+    // 256 with 5 octaves is visually indistinguishable once the texture is
+    // tiled 80x across the city, and builds in a quarter of the time.
+    const S = 256;
+    const grain = fbmField(S, 5, 1337);
     const puddles = fbmField(S, 3, 99);
 
     // Albedo: near-black with subtle mottling and a few oil sheens.
@@ -263,7 +265,7 @@ const WINDOW_TINTS = [
  */
 export function facadeMaps(variant) {
   return memo('facade' + variant, () => {
-    const W = 256, H = 512;
+    const W = 192, H = 384;
     const rand = mulberry32(variant * 977 + 17);
 
     const base = canvas2d(W, H);
@@ -331,8 +333,8 @@ export function facadeMaps(variant) {
 /** Rooftop / sidewalk concrete. */
 export function concreteMaps() {
   return memo('concrete', () => {
-    const S = 256;
-    const f = fbmField(S, 5, 4242);
+    const S = 192;
+    const f = fbmField(S, 4, 4242);
     const { c } = fieldToCanvas(f, S, (v) => 0.16 + v * 0.14);
     return { map: finish(c, { srgb: true, repeat: 4 }), normalMap: finish(normalFromField(f, S, 1.1), { repeat: 4 }) };
   });
