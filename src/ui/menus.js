@@ -1,5 +1,5 @@
 import { formatMoney } from '../util.js';
-import { CARS, statBars } from '../game/garage.js';
+import { CARS, statBars, adsToUnlock } from '../game/garage.js';
 import { limoProfile } from '../render/textures.js';
 import { PAINT_JOBS } from '../vehicle/spec.js';
 
@@ -22,7 +22,7 @@ const TIPS = [
 ];
 
 const PANELS = ['panel-loading', 'panel-start', 'panel-howto', 'panel-settings',
-  'panel-pause', 'panel-summary', 'panel-garage'];
+  'panel-pause', 'panel-summary', 'panel-garage', 'panel-offer'];
 
 export class Menus {
   constructor(handlers = {}) {
@@ -61,6 +61,8 @@ export class Menus {
     on('btn-garage', () => this.showGarage());
     on('btn-summary-garage', () => this.showGarage('panel-summary'));
     on('btn-pause', () => this.h.onPause?.());
+    on('btn-offer-watch', () => this._watchAd(this._offerCar));
+    on('btn-offer-no', () => this.show(this._offerReturn ?? 'panel-start'));
     on('btn-fullscreen', () => this.toggleFullscreen());
     on('btn-reset', () => {
       this.h.onResetRecords?.();
@@ -237,6 +239,16 @@ export class Menus {
         <div class="bar-row"><span class="bar-k">${k}</span>
           <span class="bar"><i style="width:${(v * 100).toFixed(0)}%"></i></span></div>`).join('');
 
+      // A locked car offers both routes: pay for it, or watch for it. The ad
+      // button only appears when the platform can actually serve one.
+      const needed = adsToUnlock(car);
+      const watched = save.adProgress?.[car.id] ?? 0;
+      const adButton = !owned && needed > 0 && this.h.canWatchAd?.()
+        ? `<button class="btn-ghost car-btn is-ad" data-ad="${car.id}">
+             ▶ WATCH AD<span class="ad-count">${watched}/${needed}</span>
+           </button>`
+        : '';
+
       const action = equipped
         ? '<span class="car-tag">IN USE</span>'
         : owned
@@ -244,7 +256,7 @@ export class Menus {
           : `<button class="btn-ghost car-btn${afford ? '' : ' is-locked'}"
                data-buy="${car.id}" ${afford ? '' : 'disabled'}>
                ${afford ? 'BUY ' + formatMoney(car.price) : formatMoney(car.price)}
-             </button>`;
+             </button>${adButton}`;
 
       return `<div class="car-card${equipped ? ' is-equipped' : ''}">
           <img class="car-shot" alt="${car.name}" src="${this._portrait(car.paint)}">
@@ -263,6 +275,84 @@ export class Menus {
     for (const b of document.querySelectorAll('#garage-list [data-equip]')) {
       b.addEventListener('click', () => { this.h.onEquip?.(b.dataset.equip); this.renderGarage(); });
     }
+    for (const b of document.querySelectorAll('#garage-list [data-ad]')) {
+      b.addEventListener('click', () => {
+        b.disabled = true;               // one view per click, not per impatience
+        this._watchAd(b.dataset.ad, 'panel-garage');
+      });
+    }
+  }
+
+  /* ----------------------------------------------------------- ad unlocks */
+
+  /**
+   * The cheapest car the player has not got yet — the one worth offering.
+   * @returns {object|null}
+   */
+  nextLockedCar() {
+    const save = this.h.getRecords?.();
+    if (!save) return null;
+    return CARS.filter((c) => !save.owned.includes(c.id) && adsToUnlock(c) > 0)
+      .sort((a, b) => a.price - b.price)[0] ?? null;
+  }
+
+  /**
+   * The "watch an ad for a car" popup.
+   *
+   * @param {object} car
+   * @param {string} returnTo panel to fall back to when they decline or finish
+   * @returns {boolean} whether it was shown — it is skipped when there is
+   *   nothing left to unlock or no ad to serve
+   */
+  showOffer(car = this.nextLockedCar(), returnTo = 'panel-start') {
+    if (!car || !this.h.canWatchAd?.()) return false;
+    const save = this.h.getRecords?.();
+    const needed = adsToUnlock(car);
+    const watched = save?.adProgress?.[car.id] ?? 0;
+
+    this._offerCar = car.id;
+    this._offerReturn = returnTo;
+    document.getElementById('offer-shot').src = this._portrait(car.paint);
+    document.getElementById('offer-shot').alt = car.name;
+    document.getElementById('offer-name').textContent = car.name;
+    document.getElementById('offer-blurb').textContent = car.blurb;
+    document.getElementById('offer-progress').textContent = needed === 1
+      ? 'ONE AD UNLOCKS IT'
+      : `${watched} / ${needed} ADS WATCHED`;
+    this.show('panel-offer', returnTo);
+    return true;
+  }
+
+  /**
+   * Play the ad and report back.
+   *
+   * The button is disabled for the duration: the ad opens in its own frame, so
+   * without this the player can hammer it and queue several unlocks off one
+   * view.
+   */
+  async _watchAd(carId, returnTo = this._offerReturn ?? 'panel-start') {
+    const car = CARS.find((c) => c.id === carId);
+    if (!car) return;
+    const btn = document.getElementById('btn-offer-watch');
+    const label = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'LOADING AD…'; }
+
+    const result = await this.h.onWatchAd?.(car.id);
+
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    if (!result) {                       // no reward earned — nothing changes
+      this.show(returnTo);
+      return;
+    }
+    if (result.unlocked) {
+      // Land them in the garage looking at the car they just won.
+      this.showGarage(returnTo === 'panel-garage' ? 'panel-start' : returnTo);
+      this._flash('garage-wallet', `${car.name.toUpperCase()} UNLOCKED`);
+      return;
+    }
+    // Still short — show them how far along they are rather than dropping them
+    // back to the menu with no feedback.
+    this.showOffer(car, returnTo);
   }
 
   /** Side-on portrait of the car, drawn on a canvas in its own paint. */

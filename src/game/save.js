@@ -19,6 +19,7 @@ const DEFAULTS = {
   wallet: 0,              // cash banked across shifts, spent in the garage
   owned: ['classic'],
   car: 'classic',
+  adProgress: {},         // car id -> rewarded ads watched toward unlocking it
   bestCash: 0,
   bestDrift: 0,
   bestFares: 0,
@@ -148,6 +149,35 @@ class Save {
     d.car = car.id;
     this.save();
     return true;
+  }
+
+  /**
+   * Credit one watched rewarded ad toward a car, and hand it over once the
+   * count is met.
+   *
+   * @returns {{watched: number, needed: number, unlocked: boolean}}
+   */
+  creditAd(car, needed) {
+    const d = this.load();
+    if (d.owned.includes(car.id)) {
+      return { watched: needed, needed, unlocked: false };
+    }
+    const watched = Math.min(needed, (d.adProgress[car.id] ?? 0) + 1);
+    d.adProgress[car.id] = watched;
+
+    const unlocked = watched >= needed;
+    if (unlocked) {
+      d.owned.push(car.id);
+      d.car = car.id;
+      delete d.adProgress[car.id];
+    }
+    this.save();
+    return { watched, needed, unlocked };
+  }
+
+  /** How many ads are already banked toward a car. */
+  adsWatched(carId) {
+    return this.load().adProgress[carId] ?? 0;
   }
 
   equip(id) {

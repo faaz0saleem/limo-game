@@ -305,10 +305,24 @@ kbd{
 .bar{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
 .bar i{display:block;height:100%;border-radius:3px;
   background:linear-gradient(90deg,var(--cyan),var(--gold))}
-.car-action{flex:0 0 auto}
+.car-action{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;align-items:stretch}
 .car-btn{white-space:nowrap;font-size:.66rem;padding:9px 13px}
 .car-btn.is-locked{opacity:.4;cursor:not-allowed}
 .car-tag{font-size:.62rem;letter-spacing:.18em;color:var(--gold)}
+
+/* Rewarded-ad affordances. Deliberately cyan rather than gold: gold is the
+   currency colour throughout, and a free unlock is not a purchase. */
+.car-btn.is-ad{border-color:rgba(56,230,255,.45);color:var(--cyan)}
+.car-btn.is-ad:hover{background:rgba(56,230,255,.12);border-color:rgba(56,230,255,.75)}
+.ad-count{font-family:var(--mono);opacity:.8;margin-left:6px}
+
+.offer-shot{width:min(320px,72vw);height:auto;aspect-ratio:132/47;margin:18px auto 0;
+  border-radius:10px;object-fit:contain;
+  background:linear-gradient(160deg,rgba(120,160,255,.10),rgba(0,0,0,.30))}
+.offer-name{font-size:1.1rem;font-weight:700;margin-top:14px}
+.offer-blurb{font-size:.74rem;color:var(--dim);margin:4px 0 0}
+.offer-progress{font-size:.68rem;letter-spacing:.14em;color:var(--cyan);
+  font-family:var(--mono);margin:12px 0 18px}
 .record.is-wallet .record-v{color:var(--cyan)}
 
 /* ------------------------------------------------- objective + navigation */

@@ -80,6 +80,11 @@ These were all found and fixed the hard way — please don't reintroduce them:
   data while the platform read is in flight — do not make it the source of
   truth again. `settings.quality` is the one deliberate exception, kept
   device-local so a phone cannot inherit a desktop's `ultra`.
+- **Only a real reward credits an unlock.** `portal.rewarded()` resolves false
+  for a skipped, failed or absent ad, and `onWatchAd` must return null on that
+  path — otherwise closing the ad frame early buys the car.
+- **Gate every rewarded affordance on `portal.rewardedAvailable`.** A `WATCH AD`
+  button that does nothing when tapped reads as the reward being taken away.
 - **The Playgama adapter must never leave `adHold` set.** Resuming is guaranteed
   by three independent paths (event, poll, watchdog) because a game frozen
   behind an advert that never closed is unrecoverable for the player. Do not

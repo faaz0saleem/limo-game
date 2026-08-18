@@ -144,10 +144,26 @@ export class Playgama {
   }
 
   /**
+   * Whether it is worth offering the player a rewarded ad at all.
+   *
+   * Offering one the platform cannot serve is worse than not offering it: the
+   * button does nothing, and the player reads that as the reward being taken
+   * away from them. So every rewarded affordance in the UI is gated on this.
+   */
+  get rewardedAvailable() {
+    return this.ready
+      && typeof this._bridge?.advertisement?.showRewarded === 'function';
+  }
+
+  /**
    * @returns {Promise<boolean>} whether the player actually earned the reward.
    */
   rewarded() {
-    if (!this.ready || this._pending) return Promise.resolve(false);
+    if (!this.rewardedAvailable || this._pending) return Promise.resolve(false);
+    // Counts against the interstitial cooldown too. The player just sat through
+    // an advert by choice; following it with one they did not choose is the
+    // fastest way to make them stop choosing.
+    this._lastBreak = performance.now() / 1000;
     return this._run('rewarded', () => this._bridge.advertisement.showRewarded())
       .then(() => this._rewardEarned === true);
   }

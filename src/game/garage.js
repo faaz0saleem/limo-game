@@ -48,6 +48,19 @@ export const CARS = [
 
 export const carById = (id) => CARS.find((c) => c.id === id) ?? CARS[0];
 
+/**
+ * How many rewarded ads unlock a car outright, for players who would rather
+ * watch than grind.
+ *
+ * Scaled off the price so the cheap car is one ad and the flagship is a real
+ * commitment — a flat count would make the Pearl Phantom, at six times the
+ * price of the Champagne, exactly as easy to get.
+ */
+export function adsToUnlock(car) {
+  if (car.price <= 0) return 0;
+  return Math.min(5, 1 + Math.round(car.price / 12000));
+}
+
 /** 0..1 bars for the shop cards. */
 export function statBars(car) {
   const h = car.handling;

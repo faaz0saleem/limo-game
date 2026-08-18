@@ -18,7 +18,7 @@ import { Music } from './audio/music.js';
 import { Menus } from './ui/menus.js';
 import { Navigator } from './render/navigation.js';
 import { DayNight } from './world/daynight.js';
-import { carById } from './game/garage.js';
+import { carById, adsToUnlock } from './game/garage.js';
 import { Playgama } from './playgama.js';
 import { clamp, damp, lerp } from './util.js';
 
@@ -61,6 +61,7 @@ class Game {
      */
     this.adHold = false;
     this._faresSinceBreak = 0;
+    this.offeredThisShift = false;
     this.portal = new Playgama({
       onAdOpen: () => this._holdForAd(true),
       onAdClose: () => this._holdForAd(false),
@@ -339,6 +340,7 @@ class Game {
     };
     const records = save.recordShift(shift);
     this._shiftEnded = true;
+    this.offeredThisShift = false;
     this.hud.hide();
     menus.showSummary(shift, records);
   }
@@ -705,7 +707,10 @@ async function boot() {
   }
 
   const game = new Game(stage);
-  window.__limo = game;              // handy for debugging from the console
+  // Handy for debugging from the console, and how the Playwright checks drive
+  // the menus without synthesising clicks through the overlay.
+  window.__limo = game;
+  window.__menus = menus;
 
   // Kicked off here so it overlaps building the city rather than adding to the
   // load time. Nothing below waits on it.
@@ -716,7 +721,20 @@ async function boot() {
     onStart: () => game.startOrRestart(),
     onResume: () => game.setPaused(false),
     onPause: () => game.setPaused(true),
-    onRestart: () => game.restart(),
+
+    /*
+     * Leaving the summary is the one moment an offer does not interrupt
+     * anything: the player has read their results and has not started driving
+     * yet. Once per shift only — declining returns to the summary, and without
+     * the flag pressing DRIVE AGAIN again would just re-offer forever.
+     */
+    onRestart: () => {
+      if (!game.offeredThisShift && menus.showOffer(undefined, 'panel-summary')) {
+        game.offeredThisShift = true;
+        return;
+      }
+      game.restart();
+    },
     onEndShift: () => game.endShift(),
 
     onQuality: (q) => {
@@ -743,6 +761,23 @@ async function boot() {
       game.applyAudioSettings();
     },
     getRecords: () => save.load(),
+
+    canWatchAd: () => game.portal.rewardedAvailable,
+
+    /**
+     * Play a rewarded ad and credit it toward a car.
+     * @returns {Promise<{watched:number, needed:number, unlocked:boolean}|null>}
+     *   null when no reward was earned — a skipped or failed ad must not count.
+     */
+    onWatchAd: async (id) => {
+      const car = carById(id);
+      const earned = await game.portal.rewarded();
+      if (!earned) return null;
+      const result = save.creditAd(car, adsToUnlock(car));
+      if (result.unlocked) game.equipCar(car.id);
+      return result;
+    },
+
     onBuy: (id) => {
       const car = carById(id);
       if (save.buy(car)) {

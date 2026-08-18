@@ -58,7 +58,8 @@ there for exactly one reason.
 
 Everything you earn banks into a **garage fund** that survives between shifts.
 Four cars, each a different handling brief — the Bordeaux Slider trades grip for
-a rear end that steps out on command; the Pearl Phantom is quick everywhere.
+a rear end that steps out on command; the Pearl Phantom is quick everywhere. You
+can buy them with fares or unlock them by watching ads, whichever you'd rather.
 
 The city runs a **day/night cycle**: twenty minutes of daylight, twenty of
 night, with dawn and dusk in between. Office windows switch off in the morning,
@@ -107,6 +108,24 @@ it supports. It sends `game_ready` when the title screen appears,
 `gameplay_started` / `gameplay_stopped` around play, shows a banner, takes an
 interstitial at the two moments that are actually breaks (every third fare
 delivered, and when a shift restarts), and backs the save store described above.
+
+**Rewarded ads unlock cars.** Every locked car in the garage carries a `WATCH
+AD` button alongside its price, and leaving the end-of-shift summary offers the
+cheapest one you do not own yet. The ad count scales off the price — two for the
+Champagne Royale, five for the Pearl Phantom — so the flagship is not as easy to
+get as the starter car, which a flat count would make it. A skipped or failed ad
+credits nothing; only a real reward counts.
+
+Every rewarded affordance is gated on `portal.rewardedAvailable`, so on a static
+host or a platform that cannot serve one, the buttons and the popup simply are
+not there. Offering a reward that does nothing when tapped reads to the player
+as the reward being taken away.
+
+The popup is offered once per shift and declining returns to the summary —
+without that flag, pressing *drive again* would re-offer forever. A rewarded
+view also resets the interstitial cooldown: the player just chose to watch an
+advert, and following it with one they did not choose is the fastest way to
+make them stop choosing.
 
 The adapter assumes the SDK will misbehave, because on a portal you cannot debug
 it will:
