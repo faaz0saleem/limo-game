@@ -9,6 +9,14 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🚘</text></svg>">
 
+<!--
+  Playgama Bridge. Loaded synchronously and ahead of the module graph so the
+  global `bridge` exists by the time src/playgama.js looks for it. Off a
+  supported portal it falls back to a mock platform, and the game does not
+  depend on it either way — see src/playgama.js.
+-->
+<script src="https://bridge.playgama.com/v2/stable/playgama-bridge.js"></script>
+
 <script type="importmap">
 {
   "imports": {

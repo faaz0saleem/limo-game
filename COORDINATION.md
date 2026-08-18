@@ -64,6 +64,21 @@ These were all found and fixed the hard way — please don't reintroduce them:
   fails and the canvas keeps the previous font.
 - Physics must not import `limo.js` (it needs a DOM). Dimensions live in
   `src/vehicle/spec.js`.
+- **A kerb must push out without bouncing.** Push-out plus a reflected velocity
+  is a ratchet: the car gets machine-gunned down the street. Cancel the inward
+  component instead, and latch the push-out off while the car is climbing.
+- **Limb joints chain through the parent's quaternion.** Computing a child joint
+  from sines and cosines is how the pedestrians' arms ended up detached at the
+  hip — an Euler triple's signs are very easy to get backwards, and a quaternion
+  cannot disagree with itself.
+- **A face texture's vertical placement is by sphere latitude, not by height.**
+  `uv.y` is linear in the polar angle, so features spaced by eye bunch up near
+  the crown. The rows in `faceMap()` were chosen against measured vertex
+  positions; if the head geometry changes, re-measure.
+- **The Playgama adapter must never leave `adHold` set.** Resuming is guaranteed
+  by three independent paths (event, poll, watchdog) because a game frozen
+  behind an advert that never closed is unrecoverable for the player. Do not
+  simplify that down to just the event.
 
 ## Testing
 

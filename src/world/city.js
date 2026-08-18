@@ -66,7 +66,8 @@ export class City {
   constructor(scene, { envMap, settings }) {
     this.scene = scene;
     this.settings = settings;
-    this.colliders = [];         // { minX, maxX, minZ, maxZ, tall }
+    this.colliders = [];         // solid: buildings, walls, props
+    this.kerbs = [];             // block footprints — a lip, not a wall
     this.lampPositions = [];
     this.spawnPoints = [];       // road-legal points for fares and traffic
     this.intersections = [];
@@ -245,10 +246,14 @@ export class City {
           { pos: new THREE.Vector3(cx, 0.13, cz) },
         ));
         /*
-         * Deliberately NO block-wide collider any more. Fencing off the whole
-         * lot kept the car on the tarmac; now the pavement is drivable and
-         * only the buildings themselves stop you (see _pushBuilding).
+         * Not a solid collider: the pavement is drivable. It is registered as
+         * a kerb instead, which resists the car at low speed and jolts it when
+         * mounted with enough momentum — see City.probeKerb.
          */
+        this.kerbs.push({
+          minX: cx - BLOCK / 2, maxX: cx + BLOCK / 2,
+          minZ: cz - BLOCK / 2, maxZ: cz + BLOCK / 2,
+        });
 
         if (isPark) {
           this._buildPark(cx, cz, props);
@@ -699,6 +704,51 @@ export class City {
     if (this.beaconMat) {
       this.beaconMat.color.setScalar(Math.sin(elapsed * 2.4) > 0.4 ? 1 : 0.06);
     }
+  }
+
+  /** Signed distance from a point to an AABB. Negative inside. */
+  _signedDistance(x, z, c) {
+    const dx = Math.max(c.minX - x, x - c.maxX);
+    const dz = Math.max(c.minZ - z, z - c.maxZ);
+    if (dx > 0 || dz > 0) return Math.hypot(Math.max(dx, 0), Math.max(dz, 0));
+    return Math.max(dx, dz);            // inside: the least-negative axis
+  }
+
+  /**
+   * Kerb contact: is this point straddling the edge of a pavement?
+   *
+   * Only the band right at the boundary counts, so the lip resists the car as
+   * it crosses and then lets go once the wheels are properly up. Returns the
+   * outward normal, which is the direction that pushes the car back onto the
+   * road.
+   */
+  probeKerb(x, z, radius, band = 3.0) {
+    for (const c of this.kerbs) {
+      if (x + radius < c.minX - band || x - radius > c.maxX + band ||
+          z + radius < c.minZ - band || z - radius > c.maxZ + band) continue;
+
+      const sd = this._signedDistance(x, z, c);
+      if (sd > radius || sd < -band) continue;      // clear, or well inside
+
+      // Outward normal from the nearest face.
+      const dl = x - c.minX, dr = c.maxX - x;
+      const db = z - c.minZ, df = c.maxZ - z;
+      const m = Math.min(dl, dr, db, df);
+      let nx = 0, nz = 0;
+      if (m === dl) nx = -1; else if (m === dr) nx = 1;
+      else if (m === db) nz = -1; else nz = 1;
+
+      return { nx, nz, depth: radius - sd, inside: sd < 0 };
+    }
+    return null;
+  }
+
+  /** Is this point up on a pavement (well inside a block footprint)? */
+  isOnPavement(x, z) {
+    for (const c of this.kerbs) {
+      if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) return true;
+    }
+    return false;
   }
 
   /**

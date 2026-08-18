@@ -19,6 +19,7 @@ import { Menus } from './ui/menus.js';
 import { Navigator } from './render/navigation.js';
 import { DayNight } from './world/daynight.js';
 import { carById } from './game/garage.js';
+import { Playgama } from './playgama.js';
 import { clamp, damp, lerp } from './util.js';
 
 /* ---------------------------------------------------------------- boot */
@@ -50,6 +51,37 @@ class Game {
     this.smokeAcc = 0;
     this.exhaustAcc = 0;
     this.music = new Music();
+
+    /*
+     * An advert holds the game separately from the player's own pause. They
+     * cannot share a flag: `setPaused` opens the pause menu, which must not
+     * appear under an advert, and the player must not be able to un-pause out
+     * from under one either. `adHold` freezes the loop and the audio and
+     * nothing else.
+     */
+    this.adHold = false;
+    this._faresSinceBreak = 0;
+    this.portal = new Playgama({
+      onAdOpen: () => this._holdForAd(true),
+      onAdClose: () => this._holdForAd(false),
+    });
+  }
+
+  /** Freeze (or release) the game around an advert. Muting is mandatory —
+   *  portals forbid game audio playing under a video ad. */
+  _holdForAd(hold) {
+    if (this.adHold === hold) return;
+    this.adHold = hold;
+    if (hold) {
+      this.audio.suspend();
+      this.music.setEnabled(false);
+    } else {
+      if (!this.paused) {
+        this.audio.resume();
+        this.clock?.getDelta();       // discard the interval spent in the ad
+      }
+      this.applyAudioSettings();
+    }
   }
 
   async build() {
@@ -118,7 +150,17 @@ class Game {
       onEvent: (type, data) => {
         if (type === 'fare-paid') {
           this.audio.chime(true);
-          // Only ever break between fares — never while the player is driving.
+          /*
+           * The only sane place for a break: the fare is banked, the next one
+           * has not been assigned, and the player is stopped at a kerb. Never
+           * mid-drive. The count and the gap are both floors — the platform
+           * applies its own minimum on top, and skips the break entirely if it
+           * has nothing to show.
+           */
+          if (++this._faresSinceBreak >= 3) {
+            this._faresSinceBreak = 0;
+            this.portal.interstitial(90);
+          }
         } else if (type === 'picked-up') {
           this.audio.chime(true);
         }
@@ -246,6 +288,7 @@ class Game {
     this.accumulator = 0;
     if (first) this._loop();
 
+    this.portal.gameplayStarted();
   }
 
   /** Push the saved sound/music/volume settings into the audio engines. */
@@ -263,6 +306,7 @@ class Game {
     if (!this.running || this.paused === paused) return;
     this.paused = paused;
     if (paused) {
+      this.portal.gameplayStopped();
       this.audio.suspend();
       menus.showPause({
         cash: this.play.cash,
@@ -273,7 +317,8 @@ class Game {
     } else {
       menus.hide();
       this.audio.resume();
-        this.clock.getDelta();          // discard the paused interval
+      this.clock.getDelta();            // discard the paused interval
+      this.portal.gameplayStarted();
     }
   }
 
@@ -282,6 +327,7 @@ class Game {
     if (!this.running) return;
     this.paused = true;
     this.audio.suspend();
+    this.portal.gameplayStopped();
 
     const shift = {
       cash: this.play.cash,
@@ -297,8 +343,19 @@ class Game {
     menus.showSummary(shift, records);
   }
 
-  /** Fresh shift without reloading: reset the car, the score and the marks. */
+  /**
+   * Fresh shift without reloading: reset the car, the score and the marks.
+   *
+   * The break goes *before* the reset rather than after, so the advert covers
+   * the summary screen the player has already read instead of a car they are
+   * waiting to drive. It resolves immediately when there is no advert.
+   */
   restart() {
+    this.portal.interstitial(45).then(() => this._restartNow());
+  }
+
+  _restartNow() {
+    this._faresSinceBreak = 0;
     this.vehicle.reset(this._startPos, this._startHeading);
     this.chase.reset(this.vehicle);
     this.skids.clear();
@@ -356,6 +413,54 @@ class Game {
         const s = v.applyImpact(n, 0.18);
         this.traffic.shove(car.car, car.nx, car.nz, car.depth + s * 2);
         if (s > worst) { worst = s; normal = n; contact = { x, z }; }
+      }
+    }
+
+    /*
+     * Kerbs. A pavement is a lip, not a wall: below KERB_MOUNT_SPEED the car
+     * simply cannot climb it, which is what stops you drifting casually onto
+     * the footpath. Above it you get up, but you pay for it in speed and the
+     * suspension takes the hit.
+     */
+    const KERB_MOUNT_SPEED = 5.5;
+    for (const offset of [3.7, -3.7]) {
+      const x = v.position.x + fwd.x * offset;
+      const z = v.position.z + fwd.z * offset;
+      const kerb = this.city.probeKerb(x, z, radius);
+      if (!kerb) continue;
+
+      const n = new THREE.Vector3(kerb.nx, 0, kerb.nz);
+      const approach = -v.velocity.dot(n);        // speed into the kerb
+
+      if (Math.abs(approach) >= KERB_MOUNT_SPEED) {
+        /*
+         * Committed with enough momentum: let it up, thump the body, scrub
+         * some speed. The latch matters — scrubbing speed drops `approach`
+         * below the threshold, and without it the next frame would refuse the
+         * climb, so the car would brake itself to a halt on every kerb and
+         * never actually get over one.
+         */
+        this._mountUntil = this.elapsed + 0.55;
+        if (this.elapsed - (this._kerbCooldown ?? -9) > 0.35) {
+          this._kerbCooldown = this.elapsed;
+          v.velocity.multiplyScalar(0.9);
+          v.impact = Math.max(v.impact, 0.2);
+          this.chase.addShake(0.34);
+          this.audio.impact(0.28);
+        }
+      } else if (approach > 0 && this.elapsed > (this._mountUntil ?? 0)) {
+        /*
+         * Too slow to climb it — this is what keeps you off the footpath.
+         *
+         * Responds as a wall, not a bumper: push fully clear and *remove* the
+         * inward velocity rather than reflecting it. Bouncing let the car
+         * ratchet up the kerb — bounce back, re-accelerate, gain a few
+         * centimetres, repeat — until it crept onto the pavement anyway.
+         */
+        v.position.x += kerb.nx * kerb.depth;
+        v.position.z += kerb.nz * kerb.depth;
+        const vn = v.velocity.dot(n);
+        if (vn < 0) v.velocity.addScaledVector(n, -vn);   // slide along it
       }
     }
 
@@ -457,7 +562,10 @@ class Game {
 
   _syncCar(dt) {
     const v = this.vehicle;
-    this.limo.root.position.set(v.position.x, 0, v.position.z);
+    // Up on the pavement the whole car sits a kerb-height higher.
+    const onPavement = this.city.isOnPavement(v.position.x, v.position.z);
+    this._rideHeight = damp(this._rideHeight ?? 0, onPavement ? 0.26 : 0, 9, dt);
+    this.limo.root.position.set(v.position.x, this._rideHeight, v.position.z);
     this.limo.root.rotation.y = v.heading;
     this.limo.updateWheels(v.steer, v.speed, dt);
 
@@ -487,7 +595,7 @@ class Game {
   _loop = () => {
     if (!this.running) return;
     requestAnimationFrame(this._loop);
-    if (this.paused) return;
+    if (this.paused || this.adHold) return;
 
     const raw = Math.min(this.clock.getDelta(), 0.1);
     this.elapsed += raw;
@@ -599,6 +707,10 @@ async function boot() {
   const game = new Game(stage);
   window.__limo = game;              // handy for debugging from the console
 
+  // Kicked off here so it overlaps building the city rather than adding to the
+  // load time. Nothing below waits on it.
+  const bridgeUp = game.portal.initialize();
+
   /* ------------------------------------------------------- menu callbacks */
   menus.h = {
     onStart: () => game.startOrRestart(),
@@ -662,6 +774,12 @@ async function boot() {
   menus.doneLoading();
   menus.syncSettings(save.settings, stage.quality);
   menus.showTitle(save.load());
+
+  // The portal keeps its own loading spinner up until the game says it is
+  // playable, so this has to fire once the title screen is actually on screen.
+  await bridgeUp;
+  game.portal.gameReady();
+  game.portal.showBanner();
 }
 
 boot();
