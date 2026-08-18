@@ -29,6 +29,7 @@ import { attachBridge } from './storage.js';
 const PENDING = new Set(['loading']);
 const OPEN = new Set(['opened']);
 
+const GLOBAL_TIMEOUT = 12000;   // ms to wait for the CDN script to define `bridge`
 const INIT_TIMEOUT = 6000;      // ms before boot stops waiting on the Bridge
 const OPEN_TIMEOUT = 5000;      // ms before an ad that never opened is given up
 const SHOW_TIMEOUT = 240000;    // ms before an ad that never closed is given up
@@ -48,6 +49,9 @@ export class Playgama {
     this._pending = null;       // { kind, resolve, opened, since }
     this._poll = 0;
     this._lastBreak = -Infinity;
+    this._pendingReady = false; // lifecycle calls made before the SDK answered
+    this._pendingPlay = null;
+    this._bannerWanted = false;
   }
 
   get _bridge() {
@@ -66,15 +70,26 @@ export class Playgama {
    * silently disabled on exactly the slow connections that needed it.
    */
   async initialize() {
-    const bridge = this._bridge;
-    if (!bridge?.initialize) return false;
+    // The global may not be there the instant this runs — a portal wrapper can
+    // inject the script tag itself, or move it. Wait for it rather than
+    // deciding once, at the earliest possible moment, that there is no SDK.
+    if (!await this._awaitGlobal()) return false;
 
-    const started = bridge.initialize()
+    const started = this._bridge.initialize()
       .then(() => { this._onReady(); return true; })
       .catch((err) => { console.warn('[playgama] initialize failed', err); return false; });
 
     const timeout = new Promise((r) => setTimeout(() => r(false), INIT_TIMEOUT));
     return Promise.race([started, timeout]);
+  }
+
+  async _awaitGlobal(ms = GLOBAL_TIMEOUT) {
+    const t0 = performance.now();
+    while (typeof this._bridge?.initialize !== 'function') {
+      if (performance.now() - t0 > ms) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return true;
   }
 
   _onReady() {
@@ -91,6 +106,24 @@ export class Playgama {
       this._try(() => bridge.advertisement.on(name, (state) => this._onAdState(state)));
     }
     this._try(() => bridge.advertisement.setMinimumDelayBetweenInterstitial(60));
+
+    /*
+     * Replay whatever the game said while we were still starting up.
+     *
+     * This matters more than it looks. `initialize()` races a timeout so a slow
+     * SDK cannot hold the loading screen — which means the game reaches its
+     * title screen, calls gameReady(), and gets *dropped on the floor* if the
+     * SDK has not answered yet. The portal's own spinner then stays up forever
+     * and the game looks broken to a reviewer. Deferring instead of discarding
+     * is the whole fix.
+     */
+    if (this._pendingReady) { this._pendingReady = false; this._message('game_ready'); }
+    if (this._pendingPlay) {
+      const p = this._pendingPlay;
+      this._pendingPlay = null;
+      this._message(p);
+    }
+    if (this._bannerWanted) this.showBanner();
   }
 
   /** Tell the platform the game is playable — this is what stops its spinner. */
@@ -106,19 +139,31 @@ export class Playgama {
     this._message('gameplay_stopped');
   }
 
-  _message(name) {
-    if (!this.ready) return;
-    this._try(() => this._bridge.platform.sendMessage(name));
+  _message(key) {
+    if (!this.ready) {
+      // Queued, not dropped. Only the latest play state matters, but a
+      // game_ready that never arrives leaves the portal loading forever.
+      if (key === 'game_ready') this._pendingReady = true;
+      else this._pendingPlay = key;
+      return;
+    }
+    // Prefer the SDK's own constant when it publishes one, so a platform that
+    // spells these differently still gets a value it recognises.
+    const konst = this._try(() => this._bridge.PLATFORM_MESSAGE?.[key.toUpperCase()]);
+    this._try(() => this._bridge.platform.sendMessage(
+      typeof konst === 'string' ? konst : key));
   }
 
   /* ---------------------------------------------------------------- banner */
 
   showBanner() {
+    this._bannerWanted = true;
     if (!this.ready) return;
     this._try(() => this._bridge.advertisement.showBanner({ position: 'bottom' }));
   }
 
   hideBanner() {
+    this._bannerWanted = false;
     if (!this.ready) return;
     this._try(() => this._bridge.advertisement.hideBanner());
   }

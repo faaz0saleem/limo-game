@@ -88,6 +88,14 @@ These were all found and fixed the hard way — please don't reintroduce them:
   invisible on a static host and through development. Show the button and
   answer an unfulfillable tap with "no ads available right now" — `onWatchAd`
   reports `unavailable` apart from `skipped` so the UI can say which.
+- **Never drop a lifecycle call made before the SDK is up.** `initialize()`
+  races a timeout so a slow SDK cannot hold the loading screen, so `gameReady()`
+  routinely runs before the Bridge has answered. Queue and replay it — a
+  `game_ready` that never arrives leaves the portal's spinner up forever, which
+  is indistinguishable from a broken game and fails review.
+- **A reviewer has to be able to see an advert.** Every break being tied to
+  fares means someone who just drives around never gets one. Keep the
+  guaranteed early break.
 - **The Playgama adapter must never leave `adHold` set.** Resuming is guaranteed
   by three independent paths (event, poll, watchdog) because a game frozen
   behind an advert that never closed is unrecoverable for the player. Do not

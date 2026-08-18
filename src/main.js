@@ -602,6 +602,19 @@ class Game {
     const raw = Math.min(this.clock.getDelta(), 0.1);
     this.elapsed += raw;
 
+    /*
+     * One guaranteed early break, forty seconds into the first shift.
+     *
+     * Portals verify an integration by playing the game and watching an advert
+     * all the way through. Tying every break to fares means a reviewer who
+     * drives around without completing three of them never sees one, and an
+     * integration nobody can see cannot be signed off. Once per page load.
+     */
+    if (!this._firstBreakDone && this.elapsed > 40) {
+      this._firstBreakDone = true;
+      this.portal.interstitial(0);
+    }
+
     // Fixed-step physics keeps the tyre model stable on any refresh rate.
     this.accumulator += raw;
     const step = 1 / 120;

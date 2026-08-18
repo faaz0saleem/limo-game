@@ -145,9 +145,20 @@ it will:
   flag: `paused` opens the pause menu, which must not appear under an advert,
   and the player must not be able to un-pause out from under one. Audio is muted
   for the duration — portals forbid game sound under a video ad.
-- **Initialisation never delays the game.** It is kicked off in parallel with
-  building the city, and if it has not finished by the time the title screen is
-  ready the game carries on and adopts the Bridge whenever it does arrive.
+- **Initialisation never delays the game, and lifecycle calls are queued rather
+  than dropped.** Initialisation is kicked off in parallel with building the
+  city and races a timeout so a slow SDK cannot hold the loading screen — which
+  means the game can reach its title screen and call `game_ready` *before* the
+  Bridge has answered. Discarding that call leaves the portal's own spinner up
+  forever and the game looks broken to a reviewer, so `game_ready`, the play
+  state and the banner are all replayed once the Bridge comes up. The adapter
+  also waits for `window.bridge` to appear rather than deciding once, at the
+  earliest possible moment, that there is no SDK.
+- **One advert is guaranteed early.** Forty seconds into the first shift,
+  regardless of fares. Portals verify an integration by playing the game and
+  watching an advert all the way through; tying every break to fares means a
+  reviewer who just drives around never sees one, and an integration nobody can
+  see cannot be signed off.
 
 Off a supported portal the Bridge falls back to its own mock platform, and if
 the script does not load at all the adapter stays switched off. Both cases are
