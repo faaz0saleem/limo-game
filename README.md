@@ -73,18 +73,40 @@ No build step — zip `index.html`, `styles.css`, `src/` and `vendor/three/` wit
 **index.html at the root of the archive**, and upload. The whole thing is about
 2.3 MB and runs from any static host.
 
-Saves go through `src/storage.js`, which falls back to memory when
-`localStorage` is blocked — embedding sites routinely partition third-party
-storage, and touching it there throws rather than returning null.
+### Saves
+
+Progress is stored **through the Bridge**, not in `localStorage` — portals
+require it, and it is the only way a player keeps their garage across devices or
+inside an embed that partitions storage. `src/storage.js` runs two layers:
+
+- **The Bridge is the record of truth.** Writes are coalesced onto a short timer
+  and flushed on `pagehide` / `visibilitychange`, since a shift can end seconds
+  before the tab closes and `beforeunload` does not fire on mobile.
+- **`localStorage` is a mirror.** The platform store is asynchronous and may not
+  exist at all, so the mirror lets the game boot with real data instead of
+  defaults while the platform read is in flight, and it is the whole store on a
+  plain static host. Memory backs both, because a blocked `localStorage` throws
+  on read rather than returning null.
+
+The title screen shows the local mirror immediately and repaints if the platform
+copy differs — making someone wait on a network read to see a menu is the wrong
+trade. If they press START first, `hydrate` leaves the running shift alone
+rather than moving the wallet underneath them; the local copy is written up on
+the next save regardless. A player who has an old local save and no platform one
+has it pushed up on first boot, which is their only migration path.
+
+The graphics preset is deliberately **not** synced: a phone must not inherit the
+`ultra` its owner picked on a desktop, and the game reads it at boot, before the
+Bridge could have answered.
 
 ### Playgama Bridge
 
 `src/playgama.js` wraps the [Playgama
 Bridge](https://github.com/Playgama/bridge), which is one SDK across the portals
 it supports. It sends `game_ready` when the title screen appears,
-`gameplay_started` / `gameplay_stopped` around play, shows a banner, and takes
-an interstitial at the two moments that are actually breaks: every third fare
-delivered, and when a shift restarts.
+`gameplay_started` / `gameplay_stopped` around play, shows a banner, takes an
+interstitial at the two moments that are actually breaks (every third fare
+delivered, and when a shift restarts), and backs the save store described above.
 
 The adapter assumes the SDK will misbehave, because on a portal you cannot debug
 it will:
@@ -270,7 +292,7 @@ src/
     engine.js         synthesised engine, tyres, wind, impacts
     music.js          synthesised synthwave bed
   playgama.js         Playgama Bridge adapter, safe when the SDK is absent
-  storage.js          localStorage with a memory fallback
+  storage.js          platform saves, mirrored to localStorage and memory
 vendor/three/         three.js r169 + the addons used (MIT)
 ```
 

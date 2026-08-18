@@ -75,6 +75,11 @@ These were all found and fixed the hard way — please don't reintroduce them:
   `uv.y` is linear in the polar angle, so features spaced by eye bunch up near
   the crown. The rows in `faceMap()` were chosen against measured vertex
   positions; if the head geometry changes, re-measure.
+- **Saves must go through the Bridge, not `localStorage`.** The portal requires
+  it. `localStorage` is only a synchronous mirror so the game can boot with real
+  data while the platform read is in flight — do not make it the source of
+  truth again. `settings.quality` is the one deliberate exception, kept
+  device-local so a phone cannot inherit a desktop's `ultra`.
 - **The Playgama adapter must never leave `adHold` set.** Resuming is guaranteed
   by three independent paths (event, poll, watchdog) because a game frozen
   behind an advert that never closed is unrecoverable for the player. Do not

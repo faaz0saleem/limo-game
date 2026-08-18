@@ -1,11 +1,19 @@
-import { getItem, setItem } from '../storage.js';
+import { getItem, setItem, setLocalItem, hydrate as hydrateStore } from '../storage.js';
 
 /**
  * Persistent records and settings. Everything is defensive: a corrupt or
  * missing store just yields defaults rather than breaking the boot.
+ *
+ * The store underneath is asynchronous when a platform SDK is present, but
+ * nothing in the game should have to await a save, so this stays synchronous:
+ * `data` is the live copy, `load()` seeds it from the local mirror instantly at
+ * boot, and `hydrate()` later adopts the platform's copy if one exists.
  */
 
 const KEY = 'limo.save.v1';
+
+/* Device-local, deliberately outside the synced blob — see storage.js. */
+const QUALITY_KEY = 'limo.quality';
 
 const DEFAULTS = {
   wallet: 0,              // cash banked across shifts, spent in the garage
@@ -40,20 +48,52 @@ class Save {
   load() {
     if (this._loaded) return this.data;
     this._loaded = true;
+    this._adopt(getItem(KEY));
+    return this.data;
+  }
+
+  /**
+   * Adopt the platform's copy of the save, if there is one.
+   *
+   * @param {() => boolean} [skipIf] checked immediately before the swap. The
+   *   platform read races the player: if they have already pressed START, their
+   *   shift is running against the local copy and replacing it underneath them
+   *   would move the wallet mid-game. The local copy is written up on the next
+   *   save either way, so nothing is lost by keeping it.
+   * @returns {Promise<boolean>} whether the in-memory save actually changed.
+   */
+  async hydrate(skipIf) {
+    const before = JSON.stringify(this.data);
+    let raw;
     try {
-      const raw = getItem(KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        this.data = {
+      raw = await hydrateStore(KEY);
+    } catch {
+      return false;
+    }
+    if (skipIf?.()) return false;
+
+    this._loaded = true;
+    this._adopt(raw);
+    return JSON.stringify(this.data) !== before;
+  }
+
+  /** Merge a stored JSON blob over the defaults, tolerating anything. */
+  _adopt(raw) {
+    try {
+      const parsed = raw ? JSON.parse(raw) : null;
+      this.data = parsed
+        ? {
           ...clone(DEFAULTS),
           ...parsed,
           settings: { ...DEFAULTS.settings, ...(parsed.settings ?? {}) },
-        };
-      }
+        }
+        : clone(DEFAULTS);
     } catch {
       this.data = clone(DEFAULTS);
     }
-    return this.data;
+    // The graphics preset never travels between devices.
+    const q = getItem(QUALITY_KEY);
+    if (q) this.data.settings.quality = q;
   }
 
   save() {
@@ -68,6 +108,7 @@ class Save {
 
   setSetting(key, value) {
     this.load().settings[key] = value;
+    if (key === 'quality') setLocalItem(QUALITY_KEY, value);
     this.save();
   }
 

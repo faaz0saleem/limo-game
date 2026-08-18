@@ -22,6 +22,8 @@
  *    feature instead of throwing inside the game loop.
  */
 
+import { attachBridge } from './storage.js';
+
 /* Ad lifecycle states, as the Bridge reports them. Anything not in OPEN or
  * PENDING is treated as "over", which is the safe direction to be wrong in. */
 const PENDING = new Set(['loading']);
@@ -79,6 +81,9 @@ export class Playgama {
     const bridge = this._bridge;
     this.ready = true;
     this.platform = this._try(() => bridge.platform.id) ?? 'unknown';
+
+    // Saves have to go through the platform, not localStorage — see storage.js.
+    this._try(() => attachBridge(bridge));
 
     // Subscribe if the event API is there; the poll in _tick() is the backup,
     // so a missing or differently-named event only costs latency.

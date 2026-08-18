@@ -780,6 +780,20 @@ async function boot() {
   await bridgeUp;
   game.portal.gameReady();
   game.portal.showBanner();
+
+  /*
+   * Pull the platform's copy of the save and repaint the records with it.
+   *
+   * The title screen has deliberately already been shown from the local mirror:
+   * making the player wait on a network read to see a menu is the wrong trade,
+   * and in practice this lands long before anyone clicks START. If it does not,
+   * `hydrate` leaves the running shift alone.
+   */
+  if (await save.hydrate(() => game.running)) {
+    if (!game.running && menus.shownPanel === 'panel-start') {
+      menus.showTitle(save.load());
+    }
+  }
 }
 
 boot();
