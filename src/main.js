@@ -762,20 +762,27 @@ async function boot() {
     },
     getRecords: () => save.load(),
 
-    canWatchAd: () => game.portal.rewardedAvailable,
-
     /**
      * Play a rewarded ad and credit it toward a car.
-     * @returns {Promise<{watched:number, needed:number, unlocked:boolean}|null>}
-     *   null when no reward was earned — a skipped or failed ad must not count.
+     *
+     * The three outcomes are reported apart because the UI has to say something
+     * different about each: `unavailable` is not the player's doing and should
+     * not read as a failure, whereas `skipped` means they closed the ad and it
+     * genuinely did not count.
+     *
+     * @returns {Promise<{status: 'credited'|'skipped'|'unavailable',
+     *   watched?: number, needed?: number, unlocked?: boolean}>}
      */
     onWatchAd: async (id) => {
       const car = carById(id);
+      if (!game.portal.rewardedAvailable) return { status: 'unavailable' };
+
       const earned = await game.portal.rewarded();
-      if (!earned) return null;
+      if (!earned) return { status: 'skipped' };
+
       const result = save.creditAd(car, adsToUnlock(car));
       if (result.unlocked) game.equipCar(car.id);
-      return result;
+      return { status: 'credited', ...result };
     },
 
     onBuy: (id) => {

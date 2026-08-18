@@ -290,8 +290,13 @@ kbd{
 .panel-wide{width:min(720px,94vw)}
 .wallet-line{margin-top:14px;font-size:.72rem;letter-spacing:.2em;color:var(--dim)}
 .wallet-line b{color:var(--gold);font-family:var(--mono);font-size:1rem;margin-left:8px}
+/* Cards carry two buttons once a car can be bought *or* watched for, so the
+   list needs more room — and a fade at the bottom edge, because a flush cut
+   through a card reads as the list ending rather than as more below. */
 .garage-list{display:flex;flex-direction:column;gap:10px;margin:20px 0 6px;
-  max-height:46vh;overflow-y:auto;padding-right:4px}
+  max-height:58vh;overflow-y:auto;padding-right:4px;
+  -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 28px),transparent);
+          mask-image:linear-gradient(180deg,#000 calc(100% - 28px),transparent)}
 .car-card{display:flex;gap:14px;align-items:center;text-align:left;padding:12px 14px;
   border-radius:13px;background:rgba(10,14,26,.66);border:1px solid var(--edge)}
 .car-card.is-equipped{border-color:rgba(255,203,92,.55);background:rgba(255,203,92,.07)}

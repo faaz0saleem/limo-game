@@ -83,8 +83,11 @@ These were all found and fixed the hard way — please don't reintroduce them:
 - **Only a real reward credits an unlock.** `portal.rewarded()` resolves false
   for a skipped, failed or absent ad, and `onWatchAd` must return null on that
   path — otherwise closing the ad frame early buys the car.
-- **Gate every rewarded affordance on `portal.rewardedAvailable`.** A `WATCH AD`
-  button that does nothing when tapped reads as the reward being taken away.
+- **Do not hide the rewarded affordances when no ad can be served.** They were
+  gated on `portal.rewardedAvailable` at first, which made the whole feature
+  invisible on a static host and through development. Show the button and
+  answer an unfulfillable tap with "no ads available right now" — `onWatchAd`
+  reports `unavailable` apart from `skipped` so the UI can say which.
 - **The Playgama adapter must never leave `adHold` set.** Resuming is guaranteed
   by three independent paths (event, poll, watchdog) because a game frozen
   behind an advert that never closed is unrecoverable for the player. Do not

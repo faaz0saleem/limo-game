@@ -110,16 +110,19 @@ interstitial at the two moments that are actually breaks (every third fare
 delivered, and when a shift restarts), and backs the save store described above.
 
 **Rewarded ads unlock cars.** Every locked car in the garage carries a `WATCH
-AD` button alongside its price, and leaving the end-of-shift summary offers the
-cheapest one you do not own yet. The ad count scales off the price — two for the
-Champagne Royale, five for the Pearl Phantom — so the flagship is not as easy to
-get as the starter car, which a flat count would make it. A skipped or failed ad
-credits nothing; only a real reward counts.
+AD` button alongside its price, and leaving the end-of-shift summary pops up an
+offer for the cheapest one you do not own yet. The count rises with the car —
+two for the Champagne Royale, three for the Bordeaux Slider, four for the Pearl
+Phantom — since a flat count would make the flagship, at six times the price,
+exactly as easy to get. A skipped or failed ad credits nothing.
 
-Every rewarded affordance is gated on `portal.rewardedAvailable`, so on a static
-host or a platform that cannot serve one, the buttons and the popup simply are
-not there. Offering a reward that does nothing when tapped reads to the player
-as the reward being taken away.
+Both affordances are **always visible**, including on a static host where no ad
+can be served. Hiding them behind `rewardedAvailable` made the feature invisible
+during development, and a player who never sees the option cannot want it; the
+honest version shows the button and answers a tap it cannot fulfil with *no ads
+available right now*. `onWatchAd` reports `credited`, `skipped` or `unavailable`
+separately for exactly this reason — "we have nothing to show you" is not the
+player's doing and must not read like a failure.
 
 The popup is offered once per shift and declining returns to the summary —
 without that flag, pressing *drive again* would re-offer forever. A rewarded

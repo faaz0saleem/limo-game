@@ -61,7 +61,7 @@ export class Menus {
     on('btn-garage', () => this.showGarage());
     on('btn-summary-garage', () => this.showGarage('panel-summary'));
     on('btn-pause', () => this.h.onPause?.());
-    on('btn-offer-watch', () => this._watchAd(this._offerCar));
+    on('btn-offer-watch', (e) => this._watchAd(this._offerCar, undefined, e.currentTarget));
     on('btn-offer-no', () => this.show(this._offerReturn ?? 'panel-start'));
     on('btn-fullscreen', () => this.toggleFullscreen());
     on('btn-reset', () => {
@@ -96,11 +96,15 @@ export class Menus {
   }
 
   _flash(id, text) {
-    const el = document.getElementById(id);
+    this._flashEl(document.getElementById(id), text);
+  }
+
+  /** Swap an element's label for a moment, then put it back. */
+  _flashEl(el, text) {
     if (!el) return;
-    const old = el.textContent;
+    const old = el.innerHTML;
     el.textContent = text;
-    setTimeout(() => { el.textContent = old; }, 1400);
+    setTimeout(() => { el.innerHTML = old; }, 1600);
   }
 
   /** Portrait phones get a nudge; landscape is a much better play area. */
@@ -239,11 +243,18 @@ export class Menus {
         <div class="bar-row"><span class="bar-k">${k}</span>
           <span class="bar"><i style="width:${(v * 100).toFixed(0)}%"></i></span></div>`).join('');
 
-      // A locked car offers both routes: pay for it, or watch for it. The ad
-      // button only appears when the platform can actually serve one.
+      /*
+       * A locked car always offers both routes: pay for it, or watch for it.
+       *
+       * This used to be hidden unless the platform could serve a rewarded ad,
+       * which meant it was invisible on a static host and during development —
+       * you could not see the feature you were building. Showing it and saying
+       * "no ads right now" on the tap is the honest version: the affordance is
+       * discoverable, and the one case where it cannot pay out explains itself.
+       */
       const needed = adsToUnlock(car);
       const watched = save.adProgress?.[car.id] ?? 0;
-      const adButton = !owned && needed > 0 && this.h.canWatchAd?.()
+      const adButton = !owned && needed > 0
         ? `<button class="btn-ghost car-btn is-ad" data-ad="${car.id}">
              ▶ WATCH AD<span class="ad-count">${watched}/${needed}</span>
            </button>`
@@ -276,10 +287,9 @@ export class Menus {
       b.addEventListener('click', () => { this.h.onEquip?.(b.dataset.equip); this.renderGarage(); });
     }
     for (const b of document.querySelectorAll('#garage-list [data-ad]')) {
-      b.addEventListener('click', () => {
-        b.disabled = true;               // one view per click, not per impatience
-        this._watchAd(b.dataset.ad, 'panel-garage');
-      });
+      // Passing the button in lets _watchAd disable it for the duration — one
+      // view per click, not per impatience — and report back on it.
+      b.addEventListener('click', () => this._watchAd(b.dataset.ad, 'panel-garage', b));
     }
   }
 
@@ -305,7 +315,7 @@ export class Menus {
    *   nothing left to unlock or no ad to serve
    */
   showOffer(car = this.nextLockedCar(), returnTo = 'panel-start') {
-    if (!car || !this.h.canWatchAd?.()) return false;
+    if (!car) return false;
     const save = this.h.getRecords?.();
     const needed = adsToUnlock(car);
     const watched = save?.adProgress?.[car.id] ?? 0;
@@ -328,31 +338,41 @@ export class Menus {
    *
    * The button is disabled for the duration: the ad opens in its own frame, so
    * without this the player can hammer it and queue several unlocks off one
-   * view.
+   * view. Whatever happens the player gets told — an unlock, a step toward one,
+   * or why neither happened. Silently returning them to the menu is what makes
+   * a rewarded button feel broken.
    */
-  async _watchAd(carId, returnTo = this._offerReturn ?? 'panel-start') {
+  async _watchAd(carId, returnTo = this._offerReturn ?? 'panel-start', btn = null) {
     const car = CARS.find((c) => c.id === carId);
     if (!car) return;
-    const btn = document.getElementById('btn-offer-watch');
-    const label = btn?.textContent;
+    const restore = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.textContent = 'LOADING AD…'; }
 
     const result = await this.h.onWatchAd?.(car.id);
+    const onOffer = this.activePanel === 'panel-offer';
 
-    if (btn) { btn.disabled = false; btn.textContent = label; }
-    if (!result) {                       // no reward earned — nothing changes
-      this.show(returnTo);
+    if (result?.status === 'credited') {
+      if (result.unlocked) {
+        // Land them in the garage looking at the car they just won.
+        this.showGarage(returnTo === 'panel-garage' ? 'panel-start' : returnTo);
+        this._flash('garage-wallet', `${car.name.toUpperCase()} UNLOCKED`);
+      } else if (onOffer) {
+        this.showOffer(car, returnTo);   // repaints the n/N counter
+      } else {
+        this.renderGarage();
+      }
       return;
     }
-    if (result.unlocked) {
-      // Land them in the garage looking at the car they just won.
-      this.showGarage(returnTo === 'panel-garage' ? 'panel-start' : returnTo);
-      this._flash('garage-wallet', `${car.name.toUpperCase()} UNLOCKED`);
-      return;
+
+    if (btn) { btn.disabled = false; btn.innerHTML = restore; }
+    const why = result?.status === 'unavailable'
+      ? 'NO ADS AVAILABLE RIGHT NOW'
+      : 'AD NOT COMPLETED — NOTHING CREDITED';
+    if (onOffer) {
+      document.getElementById('offer-progress').textContent = why;
+    } else if (btn) {
+      this._flashEl(btn, why.split(' —')[0]);
     }
-    // Still short — show them how far along they are rather than dropping them
-    // back to the menu with no feedback.
-    this.showOffer(car, returnTo);
   }
 
   /** Side-on portrait of the car, drawn on a canvas in its own paint. */

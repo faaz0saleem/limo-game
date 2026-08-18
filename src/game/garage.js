@@ -52,13 +52,14 @@ export const carById = (id) => CARS.find((c) => c.id === id) ?? CARS[0];
  * How many rewarded ads unlock a car outright, for players who would rather
  * watch than grind.
  *
- * Scaled off the price so the cheap car is one ad and the flagship is a real
- * commitment — a flat count would make the Pearl Phantom, at six times the
- * price of the Champagne, exactly as easy to get.
+ * Two for the first upgrade, rising with the car: price is the ordering signal
+ * because it already tracks how strong the thing is. A flat count would make
+ * the Pearl Phantom, at six times the price of the Champagne, exactly as easy
+ * to get. Comes out 2 / 3 / 4.
  */
 export function adsToUnlock(car) {
   if (car.price <= 0) return 0;
-  return Math.min(5, 1 + Math.round(car.price / 12000));
+  return Math.min(6, 2 + Math.floor(car.price / 15000));
 }
 
 /** 0..1 bars for the shop cards. */
